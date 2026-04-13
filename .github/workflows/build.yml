@@ -1,0 +1,23 @@
+name: Build soju-combat
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - run: ./gradlew applyAllPatches
+      - run: ./gradlew createMojmapPaperclipJar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soju-combat-paperclip
+          path: soju-combat-server/build/libs/*paperclip*.jar
