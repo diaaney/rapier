@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Mon, 13 Apr 2026 09:18:33 -0700
+Subject: [PATCH] rapier - 1.8 combat: remove cooldown and sweep for 1.21.11
+
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index e4240fa38fb8513c7e320a4b30e6dcbb7e015310..b8570d22e6655a8b2ed6b1bf205e3d80086f8fd9 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1031,7 +1031,9 @@ public abstract class Player extends Avatar implements ContainerUser {
+             float f = this.isAutoSpinAttack() ? this.autoSpinAttackDmg : (float)this.getAttributeValue(Attributes.ATTACK_DAMAGE);
+             ItemStack weaponItem = this.getWeaponItem();
+             DamageSource damageSource = this.createAttackSource(weaponItem); final DamageSource dmgSourceFinal = damageSource; // Paper - damage events
+-            float attackStrengthScale = this.getAttackStrengthScale(0.5F);
++            // rapier start - 1.8 combat: always full attack strength, no cooldown
++            float attackStrengthScale = 1.0F;
++            // rapier end
+             float f1 = attackStrengthScale * (this.getEnchantedDamage(target, f, damageSource) - f);
+             f *= this.baseDamageScaleFactor();
+             this.onAttack();
+@@ -1121,15 +1123,9 @@ public abstract class Player extends Avatar implements ContainerUser {
+     }
+ 
+     private boolean isSweepAttack(boolean isStrong, boolean isCritical, boolean extraKnockback) {
+-        if (isStrong && !isCritical && !extraKnockback && this.onGround()) {
+-            double d = this.getKnownMovement().horizontalDistanceSqr();
+-            double d1 = this.getSpeed() * 2.5;
+-            if (d < Mth.square(d1)) {
+-                return this.getItemInHand(InteractionHand.MAIN_HAND).is(ItemTags.SWORDS);
+-            }
+-        }
+-
++        // rapier start - 1.8 combat: no sweep attack
+         return false;
++        // rapier end
+     }
+ 
+     private void attackVisualEffects(Entity target, boolean isCritical, boolean isSweep, boolean isStrong, boolean isStab, float damageAmount) {
+@@ -1281,7 +1277,9 @@ public abstract class Player extends Avatar implements ContainerUser {
+     }
+ 
+     private float baseDamageScaleFactor() {
+-        float attackStrengthScale = this.getAttackStrengthScale(0.5F);
++        // rapier start - 1.8 combat: always full damage, ignore attack cooldown
++        float attackStrengthScale = 1.0F;
++        // rapier end
+         return 0.2F + attackStrengthScale * attackStrengthScale * 0.8F;
+     }
+ 
