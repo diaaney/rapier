@@ -2,22 +2,41 @@ name: Build rapier
 
 on:
   push:
-    branches: [main]
+    branches: [master]
+    tags:
+      - 'v*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           java-version: 21
           distribution: temurin
+
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - run: ./gradlew applyAllPatches
-      - run: ./gradlew createMojmapPaperclipJar
-      - uses: actions/upload-artifact@v4
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply patches
+        run: ./gradlew applyAllPatches
+
+      - name: Build Paperclip jar
+        run: ./gradlew createMojmapPaperclipJar
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
           name: rapier-paperclip
           path: rapier-server/build/libs/*paperclip*.jar
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rapier-server/build/libs/*paperclip*.jar
+          generate_release_notes: true

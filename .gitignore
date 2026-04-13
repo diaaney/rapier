@@ -22,3 +22,11 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
+rapier-server/src/minecraft/java
+rapier-server/src/minecraft/resources
+
+# Patch rejects
+*.rej
+
+# Superpowers/tool plans
+docs/
