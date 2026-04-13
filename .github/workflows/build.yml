@@ -33,15 +33,20 @@ jobs:
       - name: Build Paperclip jar
         run: ./gradlew createMojmapPaperclipJar
 
+      - name: Rename jar
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          mv rapier-server/build/libs/*paperclip*mojmap*.jar rapier-server/build/libs/rapier-${VERSION}.jar
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: rapier-paperclip
-          path: rapier-server/build/libs/*paperclip*.jar
+          path: rapier-server/build/libs/rapier-*.jar
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: rapier-server/build/libs/*paperclip*.jar
+          files: rapier-server/build/libs/rapier-*.jar
           generate_release_notes: true
