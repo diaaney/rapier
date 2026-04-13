@@ -65,7 +65,7 @@
      }
  }
  
-@@ -355,20 +371,3 @@
+@@ -355,20 +372,3 @@
      classpath(tasks.createReobfPaperclipJar.flatMap { it.outputZip })
      mainClass.set(null as String?)
  }
