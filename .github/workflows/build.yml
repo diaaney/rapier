@@ -1,4 +1,4 @@
-name: Build soju-combat
+name: Build rapier
 
 on:
   push:
@@ -19,5 +19,5 @@ jobs:
       - run: ./gradlew createMojmapPaperclipJar
       - uses: actions/upload-artifact@v4
         with:
-          name: soju-combat-paperclip
-          path: soju-combat-server/build/libs/*paperclip*.jar
+          name: rapier-paperclip
+          path: rapier-server/build/libs/*paperclip*.jar

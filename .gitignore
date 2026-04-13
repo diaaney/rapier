@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+**/build/
+gradle-app.setting
+
+# Generated upstream sources (produced by applyAllPatches)
+paper-server/
+paper-api/
+
+# Run directories
+run/
+work/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+
+# Local configs
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db

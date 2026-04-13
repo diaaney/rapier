@@ -15,18 +15,18 @@ paperweight {
 
         patchFile {
             path = "paper-server/build.gradle.kts"
-            outputFile = file("soju-combat-server/build.gradle.kts")
-            patchFile = file("soju-combat-server/build.gradle.kts.patch")
+            outputFile = file("rapier-server/build.gradle.kts")
+            patchFile = file("rapier-server/build.gradle.kts.patch")
         }
         patchFile {
             path = "paper-api/build.gradle.kts"
-            outputFile = file("soju-combat-api/build.gradle.kts")
-            patchFile = file("soju-combat-api/build.gradle.kts.patch")
+            outputFile = file("rapier-api/build.gradle.kts")
+            patchFile = file("rapier-api/build.gradle.kts.patch")
         }
         patchDir("paperApi") {
             upstreamPath = "paper-api"
             excludes = setOf("build.gradle.kts")
-            patchesDir = file("soju-combat-api/paper-patches")
+            patchesDir = file("rapier-api/paper-patches")
             outputDir = file("paper-api")
         }
     }
