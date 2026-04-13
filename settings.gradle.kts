@@ -9,9 +9,9 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
 }
 
-rootProject.name = "soju-combat"
+rootProject.name = "rapier"
 
-include("soju-combat-api", "soju-combat-server")
-for (name in listOf("soju-combat-api", "soju-combat-server")) {
+include("rapier-api", "rapier-server")
+for (name in listOf("rapier-api", "rapier-server")) {
     findProject(":$name")!!.projectDir = file(name)
 }

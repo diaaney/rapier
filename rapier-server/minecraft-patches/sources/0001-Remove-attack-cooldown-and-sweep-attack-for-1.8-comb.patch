@@ -1,0 +1,46 @@
+From 119194596a7871c10e26f5b3bb366721dccd1340 Mon Sep 17 00:00:00 2001
+From: rapier <dev@rapiermc.io>
+Date: Mon, 13 Apr 2026 07:47:01 -0700
+Subject: [PATCH] 0001 Remove attack cooldown and sweep attack for 1.8 combat
+
+---
+ net/minecraft/world/entity/player/Player.java | 13 +++++--------
+ 1 file changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index a0813aa..171b80a 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1229,9 +1229,11 @@ public abstract class Player extends LivingEntity {
+                 ItemStack weaponItem = this.getWeaponItem();
+                 DamageSource damageSource = Optional.ofNullable(weaponItem.getItem().getDamageSource(this)).orElse(this.damageSources().playerAttack(this));
+                 float f1 = this.getEnchantedDamage(target, f, damageSource) - f;
+-                float attackStrengthScale = this.getAttackStrengthScale(0.5F);
++                // rapier start - 1.8 combat: remove attack cooldown, always full damage
++                float attackStrengthScale = 1.0F;
+                 f *= 0.2F + attackStrengthScale * attackStrengthScale * 0.8F;
+                 f1 *= attackStrengthScale;
++                // rapier end
+                 // this.resetAttackStrengthTicker(); // CraftBukkit - Moved to EntityLiving to reset the cooldown after the damage is dealt
+                 if (target.getType().is(EntityTypeTags.REDIRECTABLE_PROJECTILE)
+                     && target instanceof Projectile projectile) {
+@@ -1273,14 +1275,9 @@ public abstract class Player extends LivingEntity {
+                         }
+ 
+                         float f2 = f + f1;
++                        // rapier start - 1.8 combat: no sweep attack
+                         boolean flag3 = false;
+-                        if (flag && !flag2 && !flag1 && this.onGround()) {
+-                            double d = this.getKnownMovement().horizontalDistanceSqr();
+-                            double d1 = this.getSpeed() * 2.5;
+-                            if (d < Mth.square(d1) && this.getItemInHand(InteractionHand.MAIN_HAND).is(ItemTags.SWORDS)) {
+-                                flag3 = true;
+-                            }
+-                        }
++                        // rapier end
+ 
+                         float f3 = 0.0F;
+                         if (target instanceof LivingEntity livingEntity) {
+-- 
+2.52.0.windows.1
+
