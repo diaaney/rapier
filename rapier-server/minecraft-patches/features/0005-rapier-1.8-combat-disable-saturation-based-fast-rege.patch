@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 12:41:54 -0700
+Subject: [PATCH] rapier - 1.8 combat: disable saturation-based fast regen
+
+1.8 only had the slow regen mode (food >= 18, heal 1 hp every 4s).
+the 1.9+ fast regen (food = 20 + saturation > 0, heal 1 hp every 0.5s)
+is gated off so natural healing matches 1.8 pace.
+
+diff --git a/net/minecraft/world/food/FoodData.java b/net/minecraft/world/food/FoodData.java
+index f4925847ee2dac8740148ffa82d8c23c4d0c7af0..891b90e1f3a864889177e86bf426fc80b680f0f9 100644
+--- a/net/minecraft/world/food/FoodData.java
++++ b/net/minecraft/world/food/FoodData.java
+@@ -66,7 +66,7 @@ public class FoodData {
+         }
+ 
+         boolean flag = serverLevel.getGameRules().get(GameRules.NATURAL_HEALTH_REGENERATION);
+-        if (flag && this.saturationLevel > 0.0F && player.isHurt() && this.foodLevel >= 20) {
++        if (false && flag && this.saturationLevel > 0.0F && player.isHurt() && this.foodLevel >= 20) { // rapier - 1.8 combat: disable fast regen (saturation-based quick heal was a 1.9+ addition)
+             this.tickTimer++;
+             if (this.tickTimer >= this.saturatedRegenRate) { // CraftBukkit
+                 float min = Math.min(this.saturationLevel, 6.0F);
