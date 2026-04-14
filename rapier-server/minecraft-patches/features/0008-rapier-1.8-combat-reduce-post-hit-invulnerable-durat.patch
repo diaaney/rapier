@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 13:18:39 -0700
+Subject: [PATCH] rapier - 1.8 combat: reduce post-hit invulnerable duration to
+ 10 ticks
+
+1.9+ raised the post-damage invulnerability window from 10 ticks (1.8)
+to 20 ticks. lowering it back lets attacks land at the 1.8 cadence and
+preserves the cumulative-damage bypass within the first half of the
+window.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 6f49b5e5888a6296b929e465a5ef87dc49bd4516..cceb395617accd00c7c68134e17ad68c95b20bc1 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -185,7 +185,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     private static final int FREE_FALL_EVENTS_PER_ELYTRA_BREAK = 2;
+     public static final float BASE_JUMP_POWER = 0.42F;
+     protected static final float DEFAULT_KNOCKBACK = 0.4F;
+-    protected static final int INVULNERABLE_DURATION = 20;
++    protected static final int INVULNERABLE_DURATION = 10; // rapier - 1.8 combat: hit cooldown 10 ticks (was 20 in 1.9+)
+     private static final double MAX_LINE_OF_SIGHT_TEST_RANGE = 128.0;
+     protected static final int LIVING_ENTITY_FLAG_IS_USING = 1;
+     protected static final int LIVING_ENTITY_FLAG_OFF_HAND = 2;
