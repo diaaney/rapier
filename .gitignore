@@ -10,6 +10,7 @@ paper-api/
 # Run directories
 run/
 work/
+test-env/
 
 # IntelliJ IDEA
 .idea/
