@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 14:53:02 -0700
+Subject: [PATCH] rapier - 1.8 combat: sync attack speed via modifier and drop
+ shield animation on swords
+
+- replace baseValue bump with a permanent modifier rapier:attack_speed_boost
+  (+1020). modifiers live on the AttributeInstance and are always included
+  in ClientboundUpdateAttributesPacket, so the client consistently sees
+  total=1024 and the cooldown bar never draws
+- swords with BLOCKS_ATTACKS now return ItemUseAnimation.NONE instead of
+  BLOCK. the damage reduction still activates because isUsingItem is
+  true, but the client no longer plays the shield-raise pose that felt
+  alien for a sword
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 8388b4f7f2af99eac54da24cf2ec06e8f176f7ed..7b2fae02d630abb098fbcf32bd19d55b523c1eb0 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -197,10 +197,20 @@ public abstract class Player extends Avatar implements ContainerUser {
+         this.inventory = new Inventory(this, this.equipment);
+         this.inventoryMenu = new InventoryMenu(this.inventory, !level.isClientSide(), this);
+         this.containerMenu = this.inventoryMenu;
+-        // rapier - 1.8 combat: instantiate ATTACK_SPEED so the bumped base value (1024) gets synced to client on join, hiding the cooldown bar
+-        this.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED);
++        // rapier start - 1.8 combat: attach a permanent ATTACK_SPEED modifier so the attribute instance exists in the map and gets synced to the client, driving the cooldown bar to "always full" and hiding it
++        net.minecraft.world.entity.ai.attributes.AttributeInstance rapierAttackSpeed = this.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED);
++        if (rapierAttackSpeed != null && rapierAttackSpeed.getModifier(RAPIER_ATTACK_SPEED_BOOST_ID) == null) {
++            rapierAttackSpeed.addPermanentModifier(new net.minecraft.world.entity.ai.attributes.AttributeModifier(
++                RAPIER_ATTACK_SPEED_BOOST_ID,
++                1020.0,
++                net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE
++            ));
++        }
++        // rapier end
+     }
+ 
++    private static final net.minecraft.resources.Identifier RAPIER_ATTACK_SPEED_BOOST_ID = net.minecraft.resources.Identifier.fromNamespaceAndPath("rapier", "attack_speed_boost"); // rapier - 1.8 combat
++
+     @Override
+     protected EntityEquipment createEquipment() {
+         return new PlayerEquipment(this);
+@@ -223,7 +233,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+         return LivingEntity.createLivingAttributes()
+             .add(Attributes.ATTACK_DAMAGE, 1.0)
+             .add(Attributes.MOVEMENT_SPEED, 0.1F)
+-            .add(Attributes.ATTACK_SPEED, 1024.0) // rapier - 1.8 combat: hide cooldown bar via extreme attack speed
++            .add(Attributes.ATTACK_SPEED) // rapier - 1.8 combat: base stays vanilla, boost applied via RAPIER_ATTACK_SPEED_BOOST modifier in constructor
+             .add(Attributes.LUCK)
+             .add(Attributes.BLOCK_INTERACTION_RANGE, 4.5)
+             .add(Attributes.ENTITY_INTERACTION_RANGE, 3.0)
+diff --git a/net/minecraft/world/item/Item.java b/net/minecraft/world/item/Item.java
+index a97923a94eb8a63b9a2ece6d46b8b19dd4cfb866..55c580f8398feed508e2c1b23f94bbd813d21d94 100644
+--- a/net/minecraft/world/item/Item.java
++++ b/net/minecraft/world/item/Item.java
+@@ -293,6 +293,8 @@ public class Item implements FeatureElement, ItemLike {
+         if (consumable != null) {
+             return consumable.animation();
+         } else if (stack.has(DataComponents.BLOCKS_ATTACKS)) {
++            // rapier - 1.8 combat: no shield-style use animation for swords (the damage reduction still applies via isUsingItem state)
++            if (stack.is(net.minecraft.tags.ItemTags.SWORDS)) return ItemUseAnimation.NONE;
+             return ItemUseAnimation.BLOCK;
+         } else {
+             return stack.has(DataComponents.KINETIC_WEAPON) ? ItemUseAnimation.SPEAR : ItemUseAnimation.NONE;
