@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 15:52:51 -0700
+Subject: [PATCH] rapier - 1.8 combat: restore 1.8 armor reduction formula
+ (flat 4% per point)
+
+replaces the 1.9+ toughness-scaled formula:
+  f = 2 + toughness/4; effective = clamp(armor - damage/f, armor*0.2, 20)
+  reduction = effective/25
+
+with the 1.8.9 flat formula:
+  reduction = clamp(armor * 0.04, 0, 0.8)
+
+consequences: armor is never bypassed by high-damage weapons and
+toughness (netherite) has no effect (post-1.8 stat). cap stays at 80%.
+
+diff --git a/net/minecraft/world/damagesource/CombatRules.java b/net/minecraft/world/damagesource/CombatRules.java
+index 5f8637dfe4703cb78f486fe49d2e81518cf48715..dbea47f8a9f7852a9227482469b728434ca7aee4 100644
+--- a/net/minecraft/world/damagesource/CombatRules.java
++++ b/net/minecraft/world/damagesource/CombatRules.java
+@@ -14,9 +14,8 @@ public class CombatRules {
+     private static final int NUM_ARMOR_ITEMS = 4;
+ 
+     public static float getDamageAfterAbsorb(LivingEntity entity, float damageAmount, DamageSource damageSource, float armorValue, float armorToughness) {
+-        float f = 2.0F + armorToughness / 4.0F;
+-        float f1 = Mth.clamp(armorValue - damageAmount / f, armorValue * 0.2F, 20.0F);
+-        float f2 = f1 / 25.0F;
++        // rapier - 1.8 combat: flat 4% reduction per armor point (cap at 80%), drop toughness scaling and high-damage bypass
++        float f2 = Mth.clamp(armorValue * 0.04F, 0.0F, 0.8F);
+         ItemStack weaponItem = damageSource.getWeaponItem();
+         float f3;
+         if (weaponItem != null && entity.level() instanceof ServerLevel serverLevel) {

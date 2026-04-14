@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 15:53:51 -0700
+Subject: [PATCH] rapier - 1.8 combat: restore 1.8.9 Protection EPF curve
+
+1.8.9 formula: EPF per level = floor((6 + lvl^2) * 0.75 / 3)
+  lvl 1 -> 1, lvl 2 -> 2, lvl 3 -> 3, lvl 4 -> 5
+
+implemented via LevelBasedValue.lookup so each level returns the exact
+1.8 value. a full set of Prot IV now yields 20 EPF -> 80% reduction
+(vs 16 EPF / 64% in 1.9+). 1.8 armor was meaningfully tankier.
+
+diff --git a/net/minecraft/world/item/enchantment/Enchantments.java b/net/minecraft/world/item/enchantment/Enchantments.java
+index 42f2462af959e0fc3e96538bc3dde2f3e00ba456..df3c5c04df4dda0df3f31fd358d9ae6a2032e833 100644
+--- a/net/minecraft/world/item/enchantment/Enchantments.java
++++ b/net/minecraft/world/item/enchantment/Enchantments.java
+@@ -144,9 +144,10 @@ public class Enchantments {
+                     )
+                 )
+                 .exclusiveWith(holderGetter1.getOrThrow(EnchantmentTags.ARMOR_EXCLUSIVE))
++                // rapier - 1.8 combat: 1.8.9 Protection EPF lookup (floor((6+lvl^2)*0.75/3)) for levels 1-4: 1, 2, 3, 5
+                 .withEffect(
+                     EnchantmentEffectComponents.DAMAGE_PROTECTION,
+-                    new AddValue(LevelBasedValue.perLevel(1.0F)),
++                    new AddValue(LevelBasedValue.lookup(java.util.List.of(1.0F, 2.0F, 3.0F, 5.0F), LevelBasedValue.constant(5.0F))),
+                     DamageSourceCondition.hasDamageSource(
+                         DamageSourcePredicate.Builder.damageType().tag(TagPredicate.isNot(DamageTypeTags.BYPASSES_INVULNERABILITY))
+                     )

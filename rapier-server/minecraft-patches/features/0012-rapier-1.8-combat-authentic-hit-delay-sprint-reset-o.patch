@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 15:50:32 -0700
+Subject: [PATCH] rapier - 1.8 combat: authentic hit delay, sprint reset on
+ hit, blockhit slowdown
+
+- INVULNERABLE_DURATION 0 -> 10 ticks (authentic 1.8.9 hurt-resistant
+  window with cumulative-only rule in first half)
+- taking damage cancels sprint for players (enables 1.8 W-tap)
+- movement scales to 30% while isBlocking() with a sword in useItem
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 35b3fe4e4ed8846a25c803b386b34fa836dbbe59..e1d99b27599a5460af659c6202ac9a596d806cce 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -185,7 +185,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     private static final int FREE_FALL_EVENTS_PER_ELYTRA_BREAK = 2;
+     public static final float BASE_JUMP_POWER = 0.42F;
+     protected static final float DEFAULT_KNOCKBACK = 0.4F;
+-    protected static final int INVULNERABLE_DURATION = 0; // rapier - 1.8 combat: zero post-hit invulnerability for unrestricted PvP cadence
++    protected static final int INVULNERABLE_DURATION = 10; // rapier - 1.8 combat: 0.5s hurt-resistant window with cumulative-only hits in the first half (authentic 1.8.9 behavior)
+     private static final double MAX_LINE_OF_SIGHT_TEST_RANGE = 128.0;
+     protected static final int LIVING_ENTITY_FLAG_IS_USING = 1;
+     protected static final int LIVING_ENTITY_FLAG_OFF_HAND = 2;
+@@ -1497,6 +1497,8 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 // CraftBukkit end
+                 this.hurtDuration = 10;
+                 this.hurtTime = this.hurtDuration;
++                // rapier - 1.8 combat: taking damage cancels sprint (enables W-tap combat technique)
++                if (this instanceof net.minecraft.world.entity.player.Player) this.setSprinting(false);
+             }
+ 
+             this.resolveMobResponsibleForDamage(damageSource);
+@@ -3027,6 +3029,11 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     }
+ 
+     public void travel(Vec3 travelVector) {
++        // rapier start - 1.8 combat: slow to ~30% speed while blocking with sword (authentic 1.8 blockhit slowdown)
++        if (this.isBlocking() && this.getUseItem().is(net.minecraft.tags.ItemTags.SWORDS)) {
++            travelVector = travelVector.multiply(0.3, 1.0, 0.3);
++        }
++        // rapier end
+         if (this.shouldTravelInFluid(this.level().getFluidState(this.blockPosition()))) {
+             this.travelInFluid(travelVector);
+         } else if (this.isFallFlying()) {

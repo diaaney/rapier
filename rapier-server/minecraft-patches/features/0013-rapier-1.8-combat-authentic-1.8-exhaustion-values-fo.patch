@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 15:51:48 -0700
+Subject: [PATCH] rapier - 1.8 combat: authentic 1.8 exhaustion values for
+ attack and jumping
+
+- attack exhaustion 0.1 -> 0.3 (hardcoded, bypasses spigot config)
+- sprint-jump exhaustion 0.2 -> 0.8
+- jump exhaustion 0.05 -> 0.2
+
+these align hunger drain with 1.8.9 pacing. sprint (per meter) stayed
+at 0.1 in both versions so no change there.
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 4c50b1c298787bddcdd5f50aeef946e577d0570d..0557fe4fd8b3d6edd029bf0102de3d40ca72d42e 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -2083,9 +2083,9 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+         super.jumpFromGround();
+         this.awardStat(Stats.JUMP);
+         if (this.isSprinting()) {
+-            this.causeFoodExhaustion(this.level().spigotConfig.jumpSprintExhaustion, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.JUMP_SPRINT); // CraftBukkit - EntityExhaustionEvent // Spigot - Change to use configurable value
++            this.causeFoodExhaustion(0.8F, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.JUMP_SPRINT); // rapier - 1.8 combat: sprint-jump exhaustion 0.8 (was 0.2 in 1.9+)
+         } else {
+-            this.causeFoodExhaustion(this.level().spigotConfig.jumpWalkExhaustion, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.JUMP); // CraftBukkit - EntityExhaustionEvent // Spigot - Change to use configurable value
++            this.causeFoodExhaustion(0.2F, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.JUMP); // rapier - 1.8 combat: jump exhaustion 0.2 (was 0.05 in 1.9+)
+         }
+     }
+ 
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 7b2fae02d630abb098fbcf32bd19d55b523c1eb0..5472a882a6bfc241d98b0bba3b35647b8b7c2f5a 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1086,7 +1086,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+                         this.setLastHurtMob(target);
+                         this.itemAttackInteraction(target, weaponItem, damageSource, true);
+                         this.damageStatsAndHearts(target, f3);
+-                        this.causeFoodExhaustion(this.level().spigotConfig.combatExhaustion, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.ATTACK); // CraftBukkit - EntityExhaustionEvent // Spigot - Change to use configurable value
++                        this.causeFoodExhaustion(0.3F, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.ATTACK); // rapier - 1.8 combat: attack exhaustion 0.3 (was 0.1 in 1.9+)
+                     } else {
+                         this.playServerSideSound(SoundEvents.PLAYER_ATTACK_NODAMAGE);
+                     }
