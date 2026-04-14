@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 12:51:56 -0700
+Subject: [PATCH] rapier - 1.8 combat: align blockhit damage reduction with
+ viaversion values
+
+
+diff --git a/net/minecraft/world/item/ToolMaterial.java b/net/minecraft/world/item/ToolMaterial.java
+index d9cfbfa4033b3c8a2baffb30e325bbd470ab62b9..26755dce565cd0f3d09160ca664deda064d4c979 100644
+--- a/net/minecraft/world/item/ToolMaterial.java
++++ b/net/minecraft/world/item/ToolMaterial.java
+@@ -96,7 +96,7 @@ public record ToolMaterial(
+                 new BlocksAttacks(
+                     0.0F,
+                     0.0F,
+-                    List.of(new BlocksAttacks.DamageReduction(180.0F, Optional.empty(), 0.0F, 0.5F)),
++                    List.of(new BlocksAttacks.DamageReduction(90.0F, Optional.empty(), -0.5F, 0.5F)),
+                     new BlocksAttacks.ItemDamageFunction(0.0F, 0.0F, 0.0F),
+                     Optional.empty(),
+                     Optional.empty(),
