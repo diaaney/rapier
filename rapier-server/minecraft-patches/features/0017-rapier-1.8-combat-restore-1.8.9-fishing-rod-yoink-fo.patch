@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 15:54:45 -0700
+Subject: [PATCH] rapier - 1.8 combat: restore 1.8.9 fishing rod yoink formula
+
+1.8.9 pullEntity adds vertical boost = sqrt(sqrt(dist)) * 0.08 on top of
+the basic (dx, dy, dz) * 0.1 pull. this extra lift is what made fishing
+rods a viable PvP KB tool in 1.8. modern code dropped it (scale(0.1)
+only), yielding weak pulls. restored here so rod-yank again shoves
+players meaningfully.
+
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 4a7abf4ae0c1f4c22c1c77d5ce9e67418b274365..bf85d8c0753d760081a927bb81fc3a8e2dda410e 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -602,8 +602,12 @@ public class FishingHook extends Projectile {
+     public void pullEntity(Entity entity) {
+         Entity owner = this.getOwner();
+         if (owner != null) {
+-            Vec3 vec3 = new Vec3(owner.getX() - this.getX(), owner.getY() - this.getY(), owner.getZ() - this.getZ()).scale(0.1);
+-            entity.setDeltaMovement(entity.getDeltaMovement().add(vec3));
++            // rapier - 1.8 combat: restore the vertical boost from 1.8.9's yoink formula
++            double dx = owner.getX() - this.getX();
++            double dy = owner.getY() - this.getY();
++            double dz = owner.getZ() - this.getZ();
++            double verticalBoost = Math.sqrt(Math.sqrt(dx * dx + dy * dy + dz * dz)) * 0.08;
++            entity.setDeltaMovement(entity.getDeltaMovement().add(dx * 0.1, dy * 0.1 + verticalBoost, dz * 0.1));
+         }
+     }
+ 

@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 15:52:18 -0700
+Subject: [PATCH] rapier - 1.8 combat: restore 1.8.9 Sharpness formula (+1.25
+ per level)
+
+level-based value changed from perLevel(1.0, 0.5) to perLevel(1.25, 1.25).
+sharpness V now adds +6.25 damage (was +3.0 in 1.9+), matching 1.8.9.
+
+diff --git a/net/minecraft/world/item/enchantment/Enchantments.java b/net/minecraft/world/item/enchantment/Enchantments.java
+index f27725a01623284420455364f485658e98c19aa3..42f2462af959e0fc3e96538bc3dde2f3e00ba456 100644
+--- a/net/minecraft/world/item/enchantment/Enchantments.java
++++ b/net/minecraft/world/item/enchantment/Enchantments.java
+@@ -603,7 +603,7 @@ public class Enchantments {
+                     )
+                 )
+                 .exclusiveWith(holderGetter1.getOrThrow(EnchantmentTags.DAMAGE_EXCLUSIVE))
+-                .withEffect(EnchantmentEffectComponents.DAMAGE, new AddValue(LevelBasedValue.perLevel(1.0F, 0.5F)))
++                .withEffect(EnchantmentEffectComponents.DAMAGE, new AddValue(LevelBasedValue.perLevel(1.25F, 1.25F))) // rapier - 1.8 combat: +1.25 damage per level (V = +6.25), was +0.5 per level since 1.9
+         );
+         register(
+             context,
