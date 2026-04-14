@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 13:37:14 -0700
+Subject: [PATCH] rapier - 1.8 combat: remove damage indicator and crit star
+ particles
+
+these particle effects (damage_indicator on >2 dmg hits, crit_hit and
+magic_crit star animations) are 1.9+ visual feedback that did not exist
+in 1.8 pvp. removed at server send sites so vanilla clients no longer
+spawn them on attack.
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 79c804245c7f41a5a7f062e1c5e01760adde7d84..4c50b1c298787bddcdd5f50aeef946e577d0570d 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -2278,12 +2278,12 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public void crit(Entity target) {
+-        this.level().getChunkSource().sendToTrackingPlayersAndSelf(this, new ClientboundAnimatePacket(target, ClientboundAnimatePacket.CRITICAL_HIT));
++        // rapier - 1.8 combat: no crit star particles (modern visual feedback removed)
+     }
+ 
+     @Override
+     public void magicCrit(Entity target) {
+-        this.level().getChunkSource().sendToTrackingPlayersAndSelf(this, new ClientboundAnimatePacket(target, ClientboundAnimatePacket.MAGIC_CRITICAL_HIT));
++        // rapier - 1.8 combat: no enchanted-hit magic crit particles
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 010ffb4447361a703962c67858decf6585ac793d..525d3f650b74a6597b1443214da38ae8f94fd3ab 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1152,11 +1152,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+         if (target instanceof LivingEntity) {
+             float f = previousHealth - ((LivingEntity)target).getHealth();
+             this.awardStat(Stats.DAMAGE_DEALT, Math.round(f * 10.0F));
+-            if (this.level() instanceof ServerLevel && f > 2.0F) {
+-                int i = (int)(f * 0.5);
+-                ((ServerLevel)this.level())
+-                    .sendParticles(ParticleTypes.DAMAGE_INDICATOR, target.getX(), target.getY(0.5), target.getZ(), i, 0.1, 0.0, 0.1, 0.2);
+-            }
++            // rapier - 1.8 combat: no damage indicator particles (1.9+ feature)
+         }
+     }
+ 
