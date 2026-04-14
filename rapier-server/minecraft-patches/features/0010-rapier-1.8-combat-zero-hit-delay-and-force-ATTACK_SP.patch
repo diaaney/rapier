@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 13:45:49 -0700
+Subject: [PATCH] rapier - 1.8 combat: zero hit delay and force ATTACK_SPEED
+ sync to client
+
+- INVULNERABLE_DURATION 10 -> 0 so hits never get rejected by the post-damage
+  cooldown window, removing the perceptible hit delay entirely
+- instantiate the player's ATTACK_SPEED attribute in the constructor so
+  the bumped base value (1024) actually lands in the AttributeMap and
+  reaches the client in the join-time UpdateAttributes packet, finally
+  hiding the cooldown bar
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index cceb395617accd00c7c68134e17ad68c95b20bc1..35b3fe4e4ed8846a25c803b386b34fa836dbbe59 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -185,7 +185,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     private static final int FREE_FALL_EVENTS_PER_ELYTRA_BREAK = 2;
+     public static final float BASE_JUMP_POWER = 0.42F;
+     protected static final float DEFAULT_KNOCKBACK = 0.4F;
+-    protected static final int INVULNERABLE_DURATION = 10; // rapier - 1.8 combat: hit cooldown 10 ticks (was 20 in 1.9+)
++    protected static final int INVULNERABLE_DURATION = 0; // rapier - 1.8 combat: zero post-hit invulnerability for unrestricted PvP cadence
+     private static final double MAX_LINE_OF_SIGHT_TEST_RANGE = 128.0;
+     protected static final int LIVING_ENTITY_FLAG_IS_USING = 1;
+     protected static final int LIVING_ENTITY_FLAG_OFF_HAND = 2;
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 525d3f650b74a6597b1443214da38ae8f94fd3ab..8388b4f7f2af99eac54da24cf2ec06e8f176f7ed 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -197,6 +197,8 @@ public abstract class Player extends Avatar implements ContainerUser {
+         this.inventory = new Inventory(this, this.equipment);
+         this.inventoryMenu = new InventoryMenu(this.inventory, !level.isClientSide(), this);
+         this.containerMenu = this.inventoryMenu;
++        // rapier - 1.8 combat: instantiate ATTACK_SPEED so the bumped base value (1024) gets synced to client on join, hiding the cooldown bar
++        this.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED);
+     }
+ 
+     @Override
