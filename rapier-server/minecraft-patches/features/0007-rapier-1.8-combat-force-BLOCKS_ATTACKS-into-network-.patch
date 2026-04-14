@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 13:04:18 -0700
+Subject: [PATCH] rapier - 1.8 combat: force BLOCKS_ATTACKS into network patch
+ for swords
+
+vanilla 1.21.x clients hold their own item prototypes and never receive
+server-side prototype overrides. since we add BLOCKS_ATTACKS to swords
+on the server prototype only, asPatch() returns no diff and the client
+never learns about it. this hook adds an explicit BLOCKS_ATTACKS entry
+to the patch when serializing any sword stack, ensuring the client sees
+the component and renders the blocking pose on right-click.
+
+diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
+index ed06cffe8a5eba2ca4a34ade81f8185e21d7b651..607954f71531fa01708be609c0f2a29d53866c8e 100644
+--- a/net/minecraft/world/item/ItemStack.java
++++ b/net/minecraft/world/item/ItemStack.java
+@@ -211,7 +211,33 @@ public final class ItemStack implements DataComponentHolder {
+                     boolean prev = net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.get();
+                     try (final io.papermc.paper.util.SafeAutoClosable ignored = io.papermc.paper.util.sanitizer.ItemObfuscationSession.withContext(c -> c.itemStack(value))) { // pass the itemstack as context to the obfuscation session
+                         net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.set(true);
+-                    codec.encode(buffer, value.components.asPatch());
++                    // rapier start - 1.8 combat: force BLOCKS_ATTACKS into network patch so vanilla clients render blocking pose on swords
++                    net.minecraft.core.component.DataComponentPatch patch = value.components.asPatch();
++                    if (value.has(net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS) && value.is(net.minecraft.tags.ItemTags.SWORDS)) {
++                        boolean alreadyInPatch = false;
++                        for (java.util.Map.Entry<net.minecraft.core.component.DataComponentType<?>, java.util.Optional<?>> e : patch.entrySet()) {
++                            if (e.getKey() == net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS) {
++                                alreadyInPatch = true;
++                                break;
++                            }
++                        }
++                        if (!alreadyInPatch) {
++                            net.minecraft.core.component.DataComponentPatch.Builder rapierBuilder = net.minecraft.core.component.DataComponentPatch.builder();
++                            for (java.util.Map.Entry<net.minecraft.core.component.DataComponentType<?>, java.util.Optional<?>> e : patch.entrySet()) {
++                                if (e.getValue().isPresent()) {
++                                    @SuppressWarnings({"unchecked", "rawtypes"})
++                                    net.minecraft.core.component.DataComponentType rawType = e.getKey();
++                                    rapierBuilder.set(rawType, e.getValue().get());
++                                } else {
++                                    rapierBuilder.remove(e.getKey());
++                                }
++                            }
++                            rapierBuilder.set(net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS, value.get(net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS));
++                            patch = rapierBuilder.build();
++                        }
++                    }
++                    codec.encode(buffer, patch);
++                    // rapier end
+                     } finally {
+                         net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.set(prev);
+                     }
