@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 12:22:45 -0700
+Subject: [PATCH] rapier - 1.8 combat: remove attack cooldown, sweep, and hide
+ cooldown bar
+
+- always full attack strength scale (no 1.9 cooldown damage penalty)
+- disable sweep attack
+- set base ATTACK_SPEED to 1024 so the client cooldown bar never fills visibly
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index e4240fa38fb8513c7e320a4b30e6dcbb7e015310..010ffb4447361a703962c67858decf6585ac793d 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -221,7 +221,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+         return LivingEntity.createLivingAttributes()
+             .add(Attributes.ATTACK_DAMAGE, 1.0)
+             .add(Attributes.MOVEMENT_SPEED, 0.1F)
+-            .add(Attributes.ATTACK_SPEED)
++            .add(Attributes.ATTACK_SPEED, 1024.0) // rapier - 1.8 combat: hide cooldown bar via extreme attack speed
+             .add(Attributes.LUCK)
+             .add(Attributes.BLOCK_INTERACTION_RANGE, 4.5)
+             .add(Attributes.ENTITY_INTERACTION_RANGE, 3.0)
+@@ -1031,7 +1031,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+             float f = this.isAutoSpinAttack() ? this.autoSpinAttackDmg : (float)this.getAttributeValue(Attributes.ATTACK_DAMAGE);
+             ItemStack weaponItem = this.getWeaponItem();
+             DamageSource damageSource = this.createAttackSource(weaponItem); final DamageSource dmgSourceFinal = damageSource; // Paper - damage events
+-            float attackStrengthScale = this.getAttackStrengthScale(0.5F);
++            float attackStrengthScale = 1.0F; // rapier - 1.8 combat: always full attack strength
+             float f1 = attackStrengthScale * (this.getEnchantedDamage(target, f, damageSource) - f);
+             f *= this.baseDamageScaleFactor();
+             this.onAttack();
+@@ -1121,6 +1121,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+     }
+ 
+     private boolean isSweepAttack(boolean isStrong, boolean isCritical, boolean extraKnockback) {
++        if (true) return false; // rapier - 1.8 combat: no sweep attack
+         if (isStrong && !isCritical && !extraKnockback && this.onGround()) {
+             double d = this.getKnownMovement().horizontalDistanceSqr();
+             double d1 = this.getSpeed() * 2.5;
