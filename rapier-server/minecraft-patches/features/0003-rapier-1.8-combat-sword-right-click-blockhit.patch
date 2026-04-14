@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 12:39:54 -0700
+Subject: [PATCH] rapier - 1.8 combat: sword right-click blockhit
+
+all swords (via applySwordProperties) now carry a BLOCKS_ATTACKS
+component that reduces incoming damage by 50% while the player is
+actively using the item. no block delay, no item damage from blocking,
+no disable cooldown, any direction (180deg angle).
+
+diff --git a/net/minecraft/world/item/ToolMaterial.java b/net/minecraft/world/item/ToolMaterial.java
+index 5a37b3a4aca3f0e0976fa6ef2b4be0c921db1dad..d9cfbfa4033b3c8a2baffb30e325bbd470ab62b9 100644
+--- a/net/minecraft/world/item/ToolMaterial.java
++++ b/net/minecraft/world/item/ToolMaterial.java
+@@ -1,9 +1,11 @@
+ package net.minecraft.world.item;
+ 
+ import java.util.List;
++import java.util.Optional; // rapier - 1.8 combat: sword blockhit
+ import net.minecraft.core.HolderGetter;
+ import net.minecraft.core.HolderSet;
+ import net.minecraft.core.component.DataComponents;
++import net.minecraft.world.item.component.BlocksAttacks; // rapier - 1.8 combat: sword blockhit
+ import net.minecraft.core.registries.BuiltInRegistries;
+ import net.minecraft.tags.BlockTags;
+ import net.minecraft.tags.ItemTags;
+@@ -87,7 +89,21 @@ public record ToolMaterial(
+                 )
+             )
+             .attributes(this.createSwordAttributes(attackDamage, attackSpeed))
+-            .component(DataComponents.WEAPON, new Weapon(1));
++            .component(DataComponents.WEAPON, new Weapon(1))
++            // rapier start - 1.8 combat: sword right-click blocks attacks at 50% reduction
++            .component(
++                DataComponents.BLOCKS_ATTACKS,
++                new BlocksAttacks(
++                    0.0F,
++                    0.0F,
++                    List.of(new BlocksAttacks.DamageReduction(180.0F, Optional.empty(), 0.0F, 0.5F)),
++                    new BlocksAttacks.ItemDamageFunction(0.0F, 0.0F, 0.0F),
++                    Optional.empty(),
++                    Optional.empty(),
++                    Optional.empty()
++                )
++            );
++            // rapier end
+     }
+ 
+     private ItemAttributeModifiers createSwordAttributes(float attackDamage, float attackSpeed) {

@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 12:40:43 -0700
+Subject: [PATCH] rapier - 1.8 combat: disable mace smash attack and fall
+ damage negation
+
+canSmashAttack always returns false, which disables the damage bonus,
+particle effects, fall distance reset, and knockback radius effect.
+mace becomes a regular weapon (still has base attack damage).
+
+diff --git a/net/minecraft/world/item/MaceItem.java b/net/minecraft/world/item/MaceItem.java
+index c9e6cf2643333a49cda78bbe2956b0f8a9b8a996..1945f42c2814a04af3c9f78f8f9f1384f8b1daa9 100644
+--- a/net/minecraft/world/item/MaceItem.java
++++ b/net/minecraft/world/item/MaceItem.java
+@@ -166,6 +166,7 @@ public class MaceItem extends Item {
+     }
+ 
+     public static boolean canSmashAttack(LivingEntity entity) {
++        if (true) return false; // rapier - 1.8 combat: disable mace smash attack and fall damage negation
+         return entity.fallDistance > 1.5 && !entity.isFallFlying();
+     }
+ 
