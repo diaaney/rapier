@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 03:38:23 -0700
+Subject: [PATCH] rapier - 1.8 combat: throwables do not inherit shooter
+ momentum
+
+Projectile.shootFromRotation no longer adds shooter.getKnownMovement()
+to the projectile velocity. this matches 1.8.9 EntityThrowable where
+setThrowableHeading sets motion purely from (angle * velocity) and the
+player's walk/sprint speed has zero effect on the throw.
+
+affects: ender pearls, snowballs, eggs, splash/lingering potions,
+experience bottles, wind charges, tridents, and bow/crossbow arrows
+(all modern projectiles that use shootFromRotation). base velocity
+constants (1.5 pearl/snowball/egg, 0.5 potion, 0.7 xp bottle) already
+match 1.8 so no further changes needed.
+
+diff --git a/net/minecraft/world/entity/projectile/Projectile.java b/net/minecraft/world/entity/projectile/Projectile.java
+index 6298e6de25f1dd9ff880a9ad2882dc7ccb2f100c..4af45b033988c7352c0fa7ca42428fde81af02d9 100644
+--- a/net/minecraft/world/entity/projectile/Projectile.java
++++ b/net/minecraft/world/entity/projectile/Projectile.java
+@@ -169,15 +169,7 @@ public abstract class Projectile extends Entity implements TraceableEntity {
+         float f1 = -Mth.sin((x + z) * (float) (Math.PI / 180.0));
+         float f2 = Mth.cos(y * (float) (Math.PI / 180.0)) * Mth.cos(x * (float) (Math.PI / 180.0));
+         this.shoot(f, f1, f2, velocity, inaccuracy);
+-        Vec3 knownMovement = shooter.getKnownMovement();
+-        // Paper start - allow disabling relative velocity
+-        if (Double.isNaN(knownMovement.x) || Double.isNaN(knownMovement.y) || Double.isNaN(knownMovement.z)) {
+-            knownMovement = new Vec3(0, 0, 0);
+-        }
+-        if (!shooter.level().paperConfig().misc.disableRelativeProjectileVelocity) {
+-        this.setDeltaMovement(this.getDeltaMovement().add(knownMovement.x, shooter.onGround() ? 0.0 : knownMovement.y, knownMovement.z));
+-        }
+-        // Paper end - allow disabling relative velocity
++        // rapier - 1.8 combat: projectiles DO NOT inherit the shooter's momentum. 1.8.9 EntityThrowable.setThrowableHeading only uses angle * velocity. 1.9 introduced the shooter-motion addition here so sprinting boosts throw range. removed to match 1.8.
+     }
+ 
+     @Override
