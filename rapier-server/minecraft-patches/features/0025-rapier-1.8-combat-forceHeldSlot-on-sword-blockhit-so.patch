@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 07:33:09 -0700
+Subject: [PATCH] rapier - 1.8 combat: forceHeldSlot on sword blockhit so
+ client resyncs BLOCKS_ATTACKS
+
+user reports after respawn the server-side slowdown + damage reduction
+still apply (so server state is correct), but the client does not
+render the shield pose. this means the client's copy of the held sword
+is missing the BLOCKS_ATTACKS component. forceHeldSlot triggers a
+slot update packet via ItemStack.STREAM_CODEC which goes through our
+force-inject encoder, guaranteeing the client receives an item with
+BLOCKS_ATTACKS in its patch.
+
+diff --git a/net/minecraft/world/item/Item.java b/net/minecraft/world/item/Item.java
+index e4fdb74675e8b0955bdbb43a5d79b0cfc3a562e0..3371b91339ca5f2e4917b190f9e85d431d802ec4 100644
+--- a/net/minecraft/world/item/Item.java
++++ b/net/minecraft/world/item/Item.java
+@@ -197,12 +197,15 @@ public class Item implements FeatureElement, ItemLike {
+                         return InteractionResult.PASS;
+                     }
+                 }
+-                // rapier - 1.8 combat: for swords, stop first then start. the explicit false->true transition forces the IS_USING entity-data flag to broadcast. without this, after respawn the server can have a stuck stale flag=true while the client's LocalPlayer believes flag=false, so startUsingItem becomes a no-op broadcast-wise and the blockhit pose never renders.
++                // rapier - 1.8 combat: for swords, (1) stop first to force the IS_USING entity-data flag to broadcast a transition, (2) startUsingItem with forceUpdate=true, and (3) resend the held slot so the client's copy of the sword reliably has the BLOCKS_ATTACKS component. without (3), after a respawn the client's LocalPlayer may hold a sword ItemStack whose component got dropped somewhere in the respawn/inventory transfer, and the client-side renderer refuses to play the BLOCK animation even though the server state (slowdown, damage reduction) is correct.
+                 if (itemInHand.is(net.minecraft.tags.ItemTags.SWORDS)) {
+                     if (player.isUsingItem()) {
+                         player.stopUsingItem();
+                     }
+                     player.startUsingItem(hand, true);
++                    if (player instanceof net.minecraft.server.level.ServerPlayer rapierServerPlayer) {
++                        rapierServerPlayer.containerMenu.forceHeldSlot(hand);
++                    }
+                 } else {
+                     player.startUsingItem(hand);
+                 }
