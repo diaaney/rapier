@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 18:24:48 -0700
+Subject: [PATCH] rapier - 1.8 combat: shield in offhand takes priority over
+ sword blockhit
+
+when a player right-clicks with a sword in main hand and a non-sword
+BLOCKS_ATTACKS item (shield) in offhand, sword.use() now returns PASS
+so the server falls through to the offhand. shields render their
+full BLOCK animation as expected and 1.8 sword blockhit only fires
+when no shield is equipped.
+
+diff --git a/net/minecraft/world/item/Item.java b/net/minecraft/world/item/Item.java
+index 55c580f8398feed508e2c1b23f94bbd813d21d94..85d9a15e1745f85a10fce74688df317cb80667a0 100644
+--- a/net/minecraft/world/item/Item.java
++++ b/net/minecraft/world/item/Item.java
+@@ -190,6 +190,14 @@ public class Item implements FeatureElement, ItemLike {
+             if (equippable != null && equippable.swappable()) {
+                 return equippable.swapWithEquipmentSlot(itemInHand, player);
+             } else if (itemInHand.has(DataComponents.BLOCKS_ATTACKS)) {
++                // rapier start - 1.8 combat: when right-clicking a sword in main hand while holding a non-sword BLOCKS_ATTACKS item (shield) in the offhand, defer to the offhand so the shield takes priority
++                if (hand == net.minecraft.world.InteractionHand.MAIN_HAND && itemInHand.is(net.minecraft.tags.ItemTags.SWORDS)) {
++                    ItemStack offHand = player.getItemInHand(net.minecraft.world.InteractionHand.OFF_HAND);
++                    if (!offHand.isEmpty() && offHand.has(DataComponents.BLOCKS_ATTACKS) && !offHand.is(net.minecraft.tags.ItemTags.SWORDS)) {
++                        return InteractionResult.PASS;
++                    }
++                }
++                // rapier end
+                 player.startUsingItem(hand);
+                 return InteractionResult.CONSUME;
+             } else {
