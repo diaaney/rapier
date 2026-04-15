@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 03:45:52 -0700
+Subject: [PATCH] rapier - 1.8 combat: splash potions and xp bottles throw at
+ player pitch, no upward lob
+
+ThrowablePotionItem and ExperienceBottleItem were passing z=-20.0F as
+the pitch offset to spawnProjectileFromRotationDelayed, giving potions
+an upward throwing arc (lob). 1.8.9 EntityPotion and EntityExpBottle
+extend EntityThrowable and use the player's rotationPitch as-is with
+no offset. offset set to 0.0F so magnitude stays the same but the
+initial angle matches 1.8 (straight out from where the player is
+looking).
+
+diff --git a/net/minecraft/world/item/ExperienceBottleItem.java b/net/minecraft/world/item/ExperienceBottleItem.java
+index caebbeee2529d44210e36ca3e7e91951de7049f6..e0c57c4d08e3776a046a97c14212d6082d603e41 100644
+--- a/net/minecraft/world/item/ExperienceBottleItem.java
++++ b/net/minecraft/world/item/ExperienceBottleItem.java
+@@ -24,7 +24,7 @@ public class ExperienceBottleItem extends Item implements ProjectileItem {
+         // Paper - PlayerLaunchProjectileEvent - moved down
+         if (level instanceof ServerLevel serverLevel) {
+             // Paper start - PlayerLaunchProjectileEvent
+-            final Projectile.Delayed<ThrownExperienceBottle> thrownExperienceBottle = Projectile.spawnProjectileFromRotationDelayed(ThrownExperienceBottle::new, serverLevel, itemInHand, player, -20.0F, 0.7F, 1.0F);
++            final Projectile.Delayed<ThrownExperienceBottle> thrownExperienceBottle = Projectile.spawnProjectileFromRotationDelayed(ThrownExperienceBottle::new, serverLevel, itemInHand, player, 0.0F, 0.7F, 1.0F); // rapier - 1.8 combat: drop the -20 pitch offset; 1.8.9 EntityExpBottle uses player pitch as-is
+             com.destroystokyo.paper.event.player.PlayerLaunchProjectileEvent event = new com.destroystokyo.paper.event.player.PlayerLaunchProjectileEvent((org.bukkit.entity.Player) player.getBukkitEntity(), org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemInHand), (org.bukkit.entity.Projectile) thrownExperienceBottle.projectile().getBukkitEntity());
+             if (event.callEvent() && thrownExperienceBottle.attemptSpawn()) {
+                 if (event.shouldConsume()) {
+diff --git a/net/minecraft/world/item/ThrowablePotionItem.java b/net/minecraft/world/item/ThrowablePotionItem.java
+index 2707c2e3c6e32bb7c497808dceb34690e27a567a..e847919eff40027264a635a73a8c3cb49813ae5b 100644
+--- a/net/minecraft/world/item/ThrowablePotionItem.java
++++ b/net/minecraft/world/item/ThrowablePotionItem.java
+@@ -24,7 +24,7 @@ public abstract class ThrowablePotionItem extends PotionItem implements Projecti
+         ItemStack itemInHand = player.getItemInHand(hand);
+         if (level instanceof ServerLevel serverLevel) {
+             // Paper start - PlayerLaunchProjectileEvent
+-            final Projectile.Delayed<AbstractThrownPotion> thrownPotion = Projectile.spawnProjectileFromRotationDelayed(this::createPotion, serverLevel, itemInHand, player, -20.0F, PROJECTILE_SHOOT_POWER, 1.0F);
++            final Projectile.Delayed<AbstractThrownPotion> thrownPotion = Projectile.spawnProjectileFromRotationDelayed(this::createPotion, serverLevel, itemInHand, player, 0.0F, PROJECTILE_SHOOT_POWER, 1.0F); // rapier - 1.8 combat: drop the -20 pitch offset; 1.8.9 EntityPotion uses player pitch as-is
+             com.destroystokyo.paper.event.player.PlayerLaunchProjectileEvent event = new com.destroystokyo.paper.event.player.PlayerLaunchProjectileEvent((org.bukkit.entity.Player) player.getBukkitEntity(), org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemInHand), (org.bukkit.entity.Projectile) thrownPotion.projectile().getBukkitEntity());
+             if (event.callEvent() && thrownPotion.attemptSpawn()) {
+                 if (event.shouldConsume()) {
