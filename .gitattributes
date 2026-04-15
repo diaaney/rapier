@@ -1,0 +1,15 @@
+# Treat the source-level Minecraft patches as Java for GitHub Linguist.
+# They are unified diffs of Java code, so Java is the honest language.
+rapier-server/minecraft-patches/**/*.patch linguist-language=Java
+rapier-server/minecraft-patches/**/*.patch linguist-generated=false
+rapier-server/minecraft-patches/**/*.patch linguist-vendored=false
+rapier-server/minecraft-patches/**/*.patch linguist-detectable=true
+
+# build.gradle.kts.patch files are Kotlin DSL
+*.gradle.kts.patch linguist-language=Kotlin
+*.gradle.kts.patch linguist-detectable=true
+
+# Gradle wrapper is vendored — don't count it against us
+gradle/wrapper/** linguist-vendored=true
+gradlew linguist-vendored=true
+gradlew.bat linguist-vendored=true
