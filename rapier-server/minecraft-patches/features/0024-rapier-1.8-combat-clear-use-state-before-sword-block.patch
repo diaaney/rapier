@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 07:25:31 -0700
+Subject: [PATCH] rapier - 1.8 combat: clear use state before sword blockhit to
+ survive respawn
+
+the IS_USING entity data flag can end up stuck at true server-side after
+a player dies while blocking. respawn does not explicitly clear it and
+Paper reuses the same ServerPlayer instance, so on the next right-click
+startUsingItem sees flag=true, sets true again (no value change), no
+dirty mark, no broadcast. client's LocalPlayer never learns the player
+is blocking and the shield pose never renders.
+
+by calling stopUsingItem first for the sword path, the flag transitions
+true->false->true within the tick which guarantees the entity data
+dirty bit is set, triggering a real broadcast and restoring the client
+animation.
+
+diff --git a/net/minecraft/world/item/Item.java b/net/minecraft/world/item/Item.java
+index e084af39709951239d15ffe2defd07cde739a72d..e4fdb74675e8b0955bdbb43a5d79b0cfc3a562e0 100644
+--- a/net/minecraft/world/item/Item.java
++++ b/net/minecraft/world/item/Item.java
+@@ -197,8 +197,11 @@ public class Item implements FeatureElement, ItemLike {
+                         return InteractionResult.PASS;
+                     }
+                 }
+-                // rapier - 1.8 combat: force-update using state for swords so switching between swords always rebinds useItem to the currently-held stack (otherwise a stale first-sword useItem blocks a second right-click)
++                // rapier - 1.8 combat: for swords, stop first then start. the explicit false->true transition forces the IS_USING entity-data flag to broadcast. without this, after respawn the server can have a stuck stale flag=true while the client's LocalPlayer believes flag=false, so startUsingItem becomes a no-op broadcast-wise and the blockhit pose never renders.
+                 if (itemInHand.is(net.minecraft.tags.ItemTags.SWORDS)) {
++                    if (player.isUsingItem()) {
++                        player.stopUsingItem();
++                    }
+                     player.startUsingItem(hand, true);
+                 } else {
+                     player.startUsingItem(hand);
