@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 04:25:15 -0700
+Subject: [PATCH] rapier - config: RapierConfig and configurable knockback
+ scale
+
+new net.minecraft.server.rapier.RapierConfig reads rapier.properties
+from the server working dir on first access and writes defaults on
+boot if missing. currently exposes knockback-scale (default 1.0).
+
+LivingEntity.knockback multiplies the final strength by the scale
+after the vanilla resistance calculation, letting operators soften or
+sharpen PvP kb without recompiling.
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..8821dcd90494732d2ffbf5c0d25130f6ec14bcc5
+--- /dev/null
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -0,0 +1,72 @@
++package net.minecraft.server.rapier;
++
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.util.Properties;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++/**
++ * Minimal runtime config for rapier behavior tuning.
++ * <p>
++ * Values are loaded from {@code rapier.properties} in the server working
++ * directory on first access. Missing or malformed entries fall back to
++ * authentic 1.8.9 defaults, so deleting the file or omitting a key is safe.
++ */
++public final class RapierConfig {
++    private static final Logger LOGGER = LoggerFactory.getLogger("Rapier");
++    private static final Path CONFIG_PATH = Path.of("rapier.properties");
++    private static final Properties PROPS = new Properties();
++    private static volatile boolean loaded;
++
++    private RapierConfig() {}
++
++    public static synchronized void load() {
++        if (loaded) return;
++        if (Files.exists(CONFIG_PATH)) {
++            try (var reader = Files.newBufferedReader(CONFIG_PATH)) {
++                PROPS.load(reader);
++                LOGGER.info("Loaded rapier.properties");
++            } catch (IOException e) {
++                LOGGER.warn("Failed to read rapier.properties, using defaults", e);
++            }
++        } else {
++            writeDefaults();
++        }
++        loaded = true;
++    }
++
++    private static void writeDefaults() {
++        String defaults = """
++            # Rapier runtime config. Tunables for 1.8.9 combat restoration.
++            # Edit and restart the server to apply changes.
++
++            # Multiplier applied to every knockback magnitude after the vanilla
++            # resistance calculation. 1.0 = authentic 1.8.9. Lower to soften,
++            # raise for stronger combo potential.
++            knockback-scale=1.0
++            """;
++        try {
++            Files.writeString(CONFIG_PATH, defaults);
++            LOGGER.info("Wrote default rapier.properties");
++        } catch (IOException e) {
++            LOGGER.warn("Failed to write default rapier.properties", e);
++        }
++    }
++
++    public static double knockbackScale() {
++        ensureLoaded();
++        String raw = PROPS.getProperty("knockback-scale", "1.0");
++        try {
++            return Double.parseDouble(raw);
++        } catch (NumberFormatException e) {
++            LOGGER.warn("Invalid knockback-scale '{}', using 1.0", raw);
++            return 1.0;
++        }
++    }
++
++    private static void ensureLoaded() {
++        if (!loaded) load();
++    }
++}
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 5cd4e52d731c9f819b3b7f658d9db150793e5a5f..d8342f20b03ddd39f003a0e291756dfb5ddbd182 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2090,6 +2090,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+ 
+     public void knockback(double strength, double x, double z, @Nullable Entity attacker, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause eventCause) { // Paper - knockback events
+         strength *= 1.0 - this.getAttributeValue(Attributes.KNOCKBACK_RESISTANCE);
++        strength *= net.minecraft.server.rapier.RapierConfig.knockbackScale(); // rapier - configurable knockback scale via rapier.properties
+         if (true || !(strength <= 0.0)) { // CraftBukkit - Call event even when force is 0
+             // this.needsSync = true; // CraftBukkit - Move down
+             Vec3 deltaMovement = this.getDeltaMovement();

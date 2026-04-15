@@ -5,6 +5,8 @@ on:
     branches: [master]
     tags:
       - 'v*'
+  pull_request:
+    branches: [master]
 
 jobs:
   build:
@@ -30,10 +32,53 @@ jobs:
       - name: Apply patches
         run: ./gradlew applyAllPatches
 
+      - name: Combat regression assertions
+        run: |
+          src="rapier-server/src/minecraft/java"
+          fail=0
+          check() {
+            local description="$1"; shift
+            if grep -qE "$@"; then
+              echo "  ✓ $description"
+            else
+              echo "  ✗ $description — pattern not found: $*"
+              fail=1
+            fi
+          }
+          echo "== sword damage =="
+          check "wooden sword bonus = 4.0F"  'WOODEN_SWORD.*sword\(ToolMaterial\.WOOD, 4\.0F'      "$src/net/minecraft/world/item/Items.java"
+          check "diamond sword bonus = 4.0F" 'DIAMOND_SWORD.*sword\(ToolMaterial\.DIAMOND, 4\.0F'  "$src/net/minecraft/world/item/Items.java"
+          check "iron axe bonus = 2.0F"      'IRON_AXE.*AxeItem\(ToolMaterial\.IRON, 2\.0F'       "$src/net/minecraft/world/item/Items.java"
+          echo "== timing =="
+          check "invulnerable duration = 20"            'INVULNERABLE_DURATION = 20'                                    "$src/net/minecraft/world/entity/LivingEntity.java"
+          check "attack strength scale hardcoded 1.0F"  'float attackStrengthScale = 1\.0F'                             "$src/net/minecraft/world/entity/player/Player.java"
+          check "sweep attack disabled"                 'rapier - 1\.8 combat: no sweep attack'                         "$src/net/minecraft/world/entity/player/Player.java"
+          echo "== defense =="
+          check "armor flat 4%"     'armorValue \* 0\.04F'                         "$src/net/minecraft/world/damagesource/CombatRules.java"
+          check "sharpness +1.25"   'LevelBasedValue\.perLevel\(1\.25F, 1\.25F\)'  "$src/net/minecraft/world/item/enchantment/Enchantments.java"
+          check "protection EPF"    'LevelBasedValue\.lookup\(java\.util\.List\.of\(1\.0F, 2\.0F, 3\.0F, 5\.0F\)' "$src/net/minecraft/world/item/enchantment/Enchantments.java"
+          echo "== blockhit =="
+          check "sword blocks attacks"        'DataComponents\.BLOCKS_ATTACKS'       "$src/net/minecraft/world/item/ToolMaterial.java"
+          check "blockhit slowdown"           'travelVector.*multiply\(0\.3, 1\.0, 0\.3\)'  "$src/net/minecraft/world/entity/LivingEntity.java"
+          echo "== projectiles =="
+          check "throwable no-momentum comment"   'rapier - 1\.8 combat: projectiles DO NOT inherit'  "$src/net/minecraft/world/entity/projectile/Projectile.java"
+          check "splash potion pitch 0"           'spawnProjectileFromRotationDelayed.*0\.0F, PROJECTILE_SHOOT_POWER'  "$src/net/minecraft/world/item/ThrowablePotionItem.java"
+          check "fishing rod vertical boost"      'sqrt\(Math\.sqrt'  "$src/net/minecraft/world/entity/projectile/FishingHook.java"
+          echo "== config =="
+          check "RapierConfig class present"  'public final class RapierConfig'  "$src/net/minecraft/server/rapier/RapierConfig.java"
+          check "knockback scale wired up"    'RapierConfig\.knockbackScale'     "$src/net/minecraft/world/entity/LivingEntity.java"
+          if [ "$fail" -eq 0 ]; then
+            echo "all combat assertions passed"
+          else
+            echo "regression assertions failed"
+            exit 1
+          fi
+
       - name: Build Paperclip jar
         run: ./gradlew createMojmapPaperclipJar
 
       - name: Rename jar
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           mv rapier-server/build/libs/*paperclip*mojmap*.jar rapier-server/build/libs/rapier-${VERSION}.jar
@@ -42,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rapier-paperclip
-          path: rapier-server/build/libs/rapier-*.jar
+          path: rapier-server/build/libs/*paperclip*.jar
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
