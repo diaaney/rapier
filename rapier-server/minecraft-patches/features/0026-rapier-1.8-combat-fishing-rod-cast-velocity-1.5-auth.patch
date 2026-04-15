@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 09:03:22 -0700
+Subject: [PATCH] rapier - 1.8 combat: fishing rod cast velocity 1.5 (authentic
+ 1.8.9)
+
+1.8.9 EntityFishHook constructor calls setThrowableHeading with
+velocity=1.5F. modern Paper replaced that with a bespoke normalize
+formula (0.6/len + triangle(0.5, ...)) that yields magnitude ~1.1 for a
+level cast, noticeably slower. switched to: normalize direction, add
+triangle inaccuracy (1.0F spread), scale by 1.5. rod bobber now
+launches at 1.8 speed.
+
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index bf85d8c0753d760081a927bb81fc3a8e2dda410e..761725e20509ff32e74ff7694dffb852a50db90e 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -108,13 +108,11 @@ public class FishingHook extends Projectile {
+         double eyeY = owner.getEyeY();
+         double d1 = owner.getZ() - cos * 0.3;
+         this.snapTo(d, eyeY, d1, yRot, xRot);
+-        Vec3 vec3 = new Vec3(-sin, Mth.clamp(-(sin1 / f), -5.0F, 5.0F), -cos);
+-        double len = vec3.length();
+-        vec3 = vec3.multiply(
+-            0.6 / len + this.random.triangle(0.5, 0.0103365),
+-            0.6 / len + this.random.triangle(0.5, 0.0103365),
+-            0.6 / len + this.random.triangle(0.5, 0.0103365)
+-        );
++        // rapier - 1.8 combat: cast velocity 1.5 (authentic 1.8.9 EntityFishHook setThrowableHeading(.., 1.5F, 1.0F)). modern Paper uses ~0.6/len + 0.5 which nets ~1.1 magnitude -- noticeably slower than 1.8.
++        Vec3 vec3 = new Vec3(-sin, Mth.clamp(-(sin1 / f), -5.0F, 5.0F), -cos)
++            .normalize()
++            .add(this.random.triangle(0.0, 0.0172275), this.random.triangle(0.0, 0.0172275), this.random.triangle(0.0, 0.0172275))
++            .scale(1.5);
+         this.setDeltaMovement(vec3);
+         this.setYRot((float)(Mth.atan2(vec3.x, vec3.z) * 180.0F / (float)Math.PI));
+         this.setXRot((float)(Mth.atan2(vec3.y, vec3.horizontalDistance()) * 180.0F / (float)Math.PI));
