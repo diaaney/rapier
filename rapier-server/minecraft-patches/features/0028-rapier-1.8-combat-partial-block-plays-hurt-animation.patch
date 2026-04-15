@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 09:52:24 -0700
+Subject: [PATCH] rapier - 1.8 combat: partial-block plays hurt animation; rod
+ hit bypasses player 0-damage filter
+
+follow-up bug fixes from live PvP feedback:
+
+1. partial-block flash: previous fix handled markHurt (kb visual) but
+   the block path still skipped level.broadcastDamageEvent, so the
+   target model never tinted red. attacker sees only the block sound
+   and tiny kb. added the broadcast when f1 < originAmount so a
+   partial block plays the hurt animation while a shield's full block
+   remains silent.
+
+2. rod hits on players: Paper rejects ServerPlayer hurt when both the
+   event damage and the origin amount are zero (line 1480). our rod
+   passed 0 damage for the authentic 1.8 feel, so hurt returned false
+   before any side effect landed. FishingHook.onHitEntity now applies
+   invuln window, hurt timer, hurtMarked, and broadcasts the damage
+   event manually when the target has no active invuln frame --
+   uniform between mobs and players, never deals HP damage.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index f8c30459d9c10112bc64f9ea0735303cbfa27a99..78f7a0788c22c66da37ee14e03c7947b6b140595 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1507,6 +1507,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 BlocksAttacks blocksAttacks = useItem.get(DataComponents.BLOCKS_ATTACKS);
+                 if (flag && blocksAttacks != null) {
+                     blocksAttacks.onBlocked(level, this);
++                    // rapier - 1.8 combat: a partial block should still flash the target's hurt animation client-side. onBlocked plays the block sound; without the damage event broadcast the client never tints the model, so user sees sound+small kb but no "I hit them" feedback.
++                    if (f1 < originAmount) {
++                        level.broadcastDamageEvent(this, damageSource);
++                    }
+                 } else {
+                     level.broadcastDamageEvent(this, damageSource);
+                 }
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index e3b35e9ab895e7364910920d044bceb95e6c8179..b834ab0caaa3a9850a27b2266ccb09c921a9d7b9 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -296,10 +296,17 @@ public class FishingHook extends Projectile {
+     protected void onHitEntity(EntityHitResult result) {
+         super.onHitEntity(result);
+         if (!this.level().isClientSide()) {
+-            // rapier - 1.8 combat: rod contact registers as a hit (hurt animation + invuln frame) with 0 damage, same as 1.8 EntityFishHook.onImpact calling attackEntityFrom(source, 0.0F). lets rod-hit force target into invuln during combos without ever dealing HP damage.
+             Entity hit = result.getEntity();
+-            if (this.getPlayerOwner() != null) {
+-                hit.hurtOrSimulate(this.damageSources().thrown(this, this.getPlayerOwner()), 0.0F);
++            Player rapierOwner = this.getPlayerOwner();
++            if (rapierOwner != null && hit instanceof net.minecraft.world.entity.LivingEntity rapierHitLiving && rapierHitLiving.invulnerableTime <= 0) {
++                // rapier - 1.8 combat: rod contact registers as a hit even with 0 damage. Paper's ServerPlayer hurt pipeline (line 1480) filters out zero-damage hits for players, so hurtOrSimulate returns false on a player target and no hurt anim / invuln fires. bypass by applying the side effects directly here: set invuln window, hurt animation tick, mark velocity for KB sync, and broadcast the damage entity event so the client plays the red hurt flash. works uniformly for mobs and players.
++                rapierHitLiving.invulnerableTime = rapierHitLiving.invulnerableDuration;
++                rapierHitLiving.hurtTime = 10;
++                rapierHitLiving.hurtDuration = 10;
++                rapierHitLiving.hurtMarked = true;
++                if (this.level() instanceof ServerLevel rapierLevel) {
++                    rapierLevel.broadcastDamageEvent(rapierHitLiving, this.damageSources().thrown(this, rapierOwner));
++                }
+             }
+             this.setHookedEntity(result.getEntity());
+         }
