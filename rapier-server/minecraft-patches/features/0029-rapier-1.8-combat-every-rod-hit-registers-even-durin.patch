@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 10:17:32 -0700
+Subject: [PATCH] rapier - 1.8 combat: every rod hit registers even during
+ invuln window
+
+previous patch skipped the rod hit effects if target was already in
+invuln from a prior hit. user wants the rod to always count as a hit:
+remove the invulnerableTime <= 0 gate so every contact refreshes
+invuln + broadcasts hurt animation + sets hurtMarked. still zero HP
+damage. lets the rod reliably interrupt combos during repeated casts.
+
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index b834ab0caaa3a9850a27b2266ccb09c921a9d7b9..e70e17b33f1037ab69c647f5eb81a21341483875 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -298,8 +298,8 @@ public class FishingHook extends Projectile {
+         if (!this.level().isClientSide()) {
+             Entity hit = result.getEntity();
+             Player rapierOwner = this.getPlayerOwner();
+-            if (rapierOwner != null && hit instanceof net.minecraft.world.entity.LivingEntity rapierHitLiving && rapierHitLiving.invulnerableTime <= 0) {
+-                // rapier - 1.8 combat: rod contact registers as a hit even with 0 damage. Paper's ServerPlayer hurt pipeline (line 1480) filters out zero-damage hits for players, so hurtOrSimulate returns false on a player target and no hurt anim / invuln fires. bypass by applying the side effects directly here: set invuln window, hurt animation tick, mark velocity for KB sync, and broadcast the damage entity event so the client plays the red hurt flash. works uniformly for mobs and players.
++            if (rapierOwner != null && hit instanceof net.minecraft.world.entity.LivingEntity rapierHitLiving) {
++                // rapier - 1.8 combat: every rod cast contact registers as a hit (hurt animation + refreshed invuln window), even if the target was still in invuln from a previous hit. 0 damage. uniform for mobs and players.
+                 rapierHitLiving.invulnerableTime = rapierHitLiving.invulnerableDuration;
+                 rapierHitLiving.hurtTime = 10;
+                 rapierHitLiving.hurtDuration = 10;
