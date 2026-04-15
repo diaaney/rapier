@@ -3,36 +3,49 @@
 </p>
 
 <h1 align=center>Rapier</h1>
-<p align=center>Paper 1.21.11 fork that restores authentic 1.8.9 PvP combat on modern Minecraft. No plugins, no client mods.</p>
+<p align=center>Paper 1.21.11 fork that restores authentic 1.8.9 PvP combat on modern Minecraft servers.</p>
 
 ## Why?
 
-From 1.9 onward Minecraft combat drifted further and further from its PvP roots: attack cooldowns, sweep attacks, shields replacing sword blocking, softer armor curves. Competitive servers still run ancient Paper 1.8.8 + ViaVersion just to keep the 1.8.9 feel alive — at the cost of an end-of-life server with no chunk updates, no new blocks, no modern client support.
+From 1.9 onward Minecraft combat drifted further and further from its PvP roots: attack cooldowns, sweep attacks, shields replacing sword blocking, softer armor curves. Competitive servers still run old 1.8 spigot just to keep the old versions feel alive at the cost of a server with no chunk updates, no new blocks, no modern client support.
 
-Rapier brings 1.8.9 combat to a current Paper. One jar, no plugins, any 1.21.x client connects natively. Mechanics that existed in 1.8 are surgically restored to their 1.8 form. Content that didn't exist in 1.8 — netherite, crossbow, trident, shields as a real offhand item — is left exactly as vanilla 1.21.11 ships it.
+Rapier brings 1.8 combat to a current Paper. One jar, no plugins, any 1.21.x client connects natively. Mechanics that existed in 1.8 are restored to their 1.8 form. Content that didn't exist in 1.8 like netherite, crossbow, trident, shields as a real offhand item is left exactly as vanilla 1.21.11 ships it (might change).
 
-## ⚙️ Development
+## ⚙️ Usage
+
+### 📥 Download
+
+Grab the latest jar from the [Releases page](https://github.com/diaaney/rapier/releases).
+
+### 🛠️ Build from source
+
+Requires JDK 21 (Temurin recommended).
 
 1. Clone this repository.
-2. Install JDK 21 (Temurin recommended).
+2. `./gradlew applyAllPatches` — fetches Paper and applies rapier's patches.
+3. `./gradlew createMojmapPaperclipJar` — produces the paperclip jar at `rapier-server/build/libs/rapier-paperclip-1.21.11-R0.1-SNAPSHOT-mojmap.jar`.
 
-### 🧪 Apply patches and iterate
+### ▶️ Run
 
-3. Run `./gradlew applyAllPatches` to fetch Paper and materialize the patched source tree under `rapier-server/src/minecraft/java/`.
-4. Edit files directly. The source tree is an inner git repo — commit your edits there with a message prefixed `rapier - ...`.
-5. Run `./gradlew rebuildMinecraftFeaturePatches` to regenerate the `.patch` files under `rapier-server/minecraft-patches/features/` from your commits.
+Drop the jar into any Paper-compatible server directory and launch as usual:
 
-### 📦 Build the server jar
+```sh
+java -Xms2G -Xmx4G -jar rapier-paperclip-*.jar --nogui
+```
 
-6. Run `./gradlew createMojmapPaperclipJar`.
-7. The jar lands at `rapier-server/build/libs/rapier-paperclip-1.21.11-R0.1-SNAPSHOT-mojmap.jar`. Drop it into any Paper-compatible server directory and launch.
+Connect with any 1.21.x client.
 
-### 🧩 Side-by-side testing
+### 🎛️ Configure
 
-`test-env/` contains two local servers (gitignored):
+On first launch rapier writes `rapier.properties` in the server working directory. Edit and restart to tune:
 
-- `reference-1.8.9/` — Paper 1.8.8 + ViaVersion on `:25566`, the behavior oracle.
-- `our-server/` — Rapier on `:25565`, receives the freshly-built jar each iteration.
+```properties
+# Multiplier applied to every knockback magnitude (1.0 = authentic 1.8.9).
+# Lower for softer knockback, raise for stronger combos.
+knockback-scale=1.0
+```
+
+More options will land here as tuning knobs are added.
 
 ## 🤝 Contributing
 
