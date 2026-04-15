@@ -65,8 +65,9 @@ jobs:
           check "splash potion pitch 0"           'spawnProjectileFromRotationDelayed.*0\.0F, PROJECTILE_SHOOT_POWER'  "$src/net/minecraft/world/item/ThrowablePotionItem.java"
           check "fishing rod vertical boost"      'sqrt\(Math\.sqrt'  "$src/net/minecraft/world/entity/projectile/FishingHook.java"
           echo "== config =="
-          check "RapierConfig class present"  'public final class RapierConfig'  "$src/net/minecraft/server/rapier/RapierConfig.java"
-          check "knockback scale wired up"    'RapierConfig\.knockbackScale'     "$src/net/minecraft/world/entity/LivingEntity.java"
+          check "RapierConfig class present"          'public final class RapierConfig'         "$src/net/minecraft/server/rapier/RapierConfig.java"
+          check "knockback scale wired up"            'RapierConfig\.knockbackScale'            "$src/net/minecraft/world/entity/LivingEntity.java"
+          check "attack momentum scale wired up"      'RapierConfig\.attackMomentumScale'       "$src/net/minecraft/world/entity/player/Player.java"
           if [ "$fail" -eq 0 ]; then
             echo "all combat assertions passed"
           else

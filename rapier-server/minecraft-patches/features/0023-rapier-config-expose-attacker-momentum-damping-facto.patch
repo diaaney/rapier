@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 06:57:07 -0700
+Subject: [PATCH] rapier - config: expose attacker momentum damping factor
+
+the 0.6x horizontal velocity damping applied to an attacker after each
+sprint/KB-enchant hit is the mechanic behind the '1.8 hit trade' feel
+(more CPS -> more damping stack -> less kb taken). hardcoded in both
+1.8 and modern paper. now configurable via rapier.properties as
+attack-momentum-scale. default 0.6 preserves authentic 1.8 behavior.
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 8821dcd90494732d2ffbf5c0d25130f6ec14bcc5..8ab7edc79647a0ec600abe46c3b4aaa11de21c79 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -46,6 +46,14 @@ public final class RapierConfig {
+             # resistance calculation. 1.0 = authentic 1.8.9. Lower to soften,
+             # raise for stronger combo potential.
+             knockback-scale=1.0
++
++            # Horizontal velocity damping applied to the attacker after each
++            # successful sprint-hit or KB-enchant hit. This is what makes faster
++            # clicking feel like you take less knockback during hit trades --
++            # each qualifying hit multiplies your own X/Z velocity by this value.
++            # 0.6 = authentic 1.8.9. Lower (e.g. 0.4) = trades feel stickier,
++            # higher (e.g. 0.8) = combos last longer and opponents push you more.
++            attack-momentum-scale=0.6
+             """;
+         try {
+             Files.writeString(CONFIG_PATH, defaults);
+@@ -66,6 +74,17 @@ public final class RapierConfig {
+         }
+     }
+ 
++    public static double attackMomentumScale() {
++        ensureLoaded();
++        String raw = PROPS.getProperty("attack-momentum-scale", "0.6");
++        try {
++            return Double.parseDouble(raw);
++        } catch (NumberFormatException e) {
++            LOGGER.warn("Invalid attack-momentum-scale '{}', using 0.6", raw);
++            return 0.6;
++        }
++    }
++
+     private static void ensureLoaded() {
+         if (!loaded) load();
+     }
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 5472a882a6bfc241d98b0bba3b35647b8b7c2f5a..aaa6f0954ca09766c73a1e4957333f0daa89f713 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1212,7 +1212,9 @@ public abstract class Player extends Avatar implements ContainerUser {
+                 );
+             }
+ 
+-            this.setDeltaMovement(this.getDeltaMovement().multiply(0.6, 1.0, 0.6));
++            // rapier - configurable attacker momentum damping (was hardcoded 0.6 = authentic 1.8.9)
++            double rapierAttackMomentumScale = net.minecraft.server.rapier.RapierConfig.attackMomentumScale();
++            this.setDeltaMovement(this.getDeltaMovement().multiply(rapierAttackMomentumScale, 1.0, rapierAttackMomentumScale));
+             // Paper start - Configurable sprint interruption on attack
+             if (!this.level().paperConfig().misc.disableSprintInterruptionOnAttack) {
+             this.setSprinting(false);

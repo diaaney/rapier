@@ -43,6 +43,12 @@ On first launch rapier writes `rapier.properties` in the server working director
 # Multiplier applied to every knockback magnitude (1.0 = authentic 1.8.9).
 # Lower for softer knockback, raise for stronger combos.
 knockback-scale=1.0
+
+# Horizontal velocity damping applied to the attacker on each sprint/KB-enchant
+# hit. This is what makes faster clicking feel like you take less knockback in
+# hit trades — each qualifying hit stacks this factor on your own velocity.
+# 0.6 = authentic 1.8.9. Lower for stickier trades, higher for floatier combos.
+attack-momentum-scale=0.6
 ```
 
 More options will land here as tuning knobs are added.
