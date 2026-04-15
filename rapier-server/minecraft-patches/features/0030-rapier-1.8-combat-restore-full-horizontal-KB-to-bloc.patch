@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Wed, 15 Apr 2026 10:27:07 -0700
+Subject: [PATCH] rapier - 1.8 combat: restore full horizontal KB to blockers
+
+user reports blockhit target only gets vertical KB, not horizontal.
+server math applies both components via knockback(0.4F, d, d1) but
+some interaction damps the horizontal visually. add a second impulse
+directly to deltaMovement when target is a blocker with partial block,
+and hurtMarked=true again to force a second velocity sync packet.
+authentic 1.8 blockers took full normal KB magnitude.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 78f7a0788c22c66da37ee14e03c7947b6b140595..790cd3ea667b3242301b2a24ea7b28e66ab7020c 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1541,6 +1541,15 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                     // Paper end - Check distance in entity interactions
+ 
+                     this.knockback(0.4F, d, d1, damageSource.getDirectEntity(), damageSource.getDirectEntity() == null ? io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.DAMAGE : io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK); // CraftBukkit // Paper - knockback events
++                    // rapier - 1.8 combat: blockers sometimes render with only vertical KB visible because the client damps horizontal velocity for a using-item player. re-apply the horizontal component directly to deltaMovement and re-mark so a second motion packet lands on top. authentic 1.8 blockers took identical KB magnitude to non-blockers.
++                    if (flag && f1 < originAmount && this.isBlocking()) {
++                        double rapierBlockKbMag = Math.sqrt(d * d + d1 * d1);
++                        if (rapierBlockKbMag > 1.0E-5) {
++                            net.minecraft.world.phys.Vec3 rapierBlockDelta = this.getDeltaMovement();
++                            this.setDeltaMovement(rapierBlockDelta.x - (d / rapierBlockKbMag) * 0.4, rapierBlockDelta.y, rapierBlockDelta.z - (d1 / rapierBlockKbMag) * 0.4);
++                            this.hurtMarked = true;
++                        }
++                    }
+                     if (!flag) {
+                         this.indicateDamage(d, d1);
+                     }
