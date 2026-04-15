@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 18:45:33 -0700
+Subject: [PATCH] rapier - 1.8 combat: force-update using state on sword use
+
+when switching hotbar to a different sword mid-combat, the server's
+useItem field can still reference the previous sword because aiStep has
+not yet run to clear it. startUsingItem(hand, false) bails out when
+isUsingItem is already true, so the second sword's blockhit never
+starts. force-update to true for sword use() ensures useItem is
+rebound to the currently-held stack on every right-click.
+
+diff --git a/net/minecraft/world/item/Item.java b/net/minecraft/world/item/Item.java
+index 85d9a15e1745f85a10fce74688df317cb80667a0..e084af39709951239d15ffe2defd07cde739a72d 100644
+--- a/net/minecraft/world/item/Item.java
++++ b/net/minecraft/world/item/Item.java
+@@ -190,15 +190,20 @@ public class Item implements FeatureElement, ItemLike {
+             if (equippable != null && equippable.swappable()) {
+                 return equippable.swapWithEquipmentSlot(itemInHand, player);
+             } else if (itemInHand.has(DataComponents.BLOCKS_ATTACKS)) {
+-                // rapier start - 1.8 combat: when right-clicking a sword in main hand while holding a non-sword BLOCKS_ATTACKS item (shield) in the offhand, defer to the offhand so the shield takes priority
++                // rapier start - 1.8 combat: shield in offhand takes priority over sword blockhit
+                 if (hand == net.minecraft.world.InteractionHand.MAIN_HAND && itemInHand.is(net.minecraft.tags.ItemTags.SWORDS)) {
+                     ItemStack offHand = player.getItemInHand(net.minecraft.world.InteractionHand.OFF_HAND);
+                     if (!offHand.isEmpty() && offHand.has(DataComponents.BLOCKS_ATTACKS) && !offHand.is(net.minecraft.tags.ItemTags.SWORDS)) {
+                         return InteractionResult.PASS;
+                     }
+                 }
++                // rapier - 1.8 combat: force-update using state for swords so switching between swords always rebinds useItem to the currently-held stack (otherwise a stale first-sword useItem blocks a second right-click)
++                if (itemInHand.is(net.minecraft.tags.ItemTags.SWORDS)) {
++                    player.startUsingItem(hand, true);
++                } else {
++                    player.startUsingItem(hand);
++                }
+                 // rapier end
+-                player.startUsingItem(hand);
+                 return InteractionResult.CONSUME;
+             } else {
+                 KineticWeapon kineticWeapon = itemInHand.get(DataComponents.KINETIC_WEAPON);
