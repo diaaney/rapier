@@ -1,5 +1,5 @@
 <p align=center>
-  <img src="assets/icon@64.png"/>
+  <img src="assets/icon@64.png" width="96" alt="Rapier icon"/>
 </p>
 
 <h1 align=center>Rapier</h1>
