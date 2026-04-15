@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <av6cts@gmail.com>
+Date: Tue, 14 Apr 2026 18:51:48 -0700
+Subject: [PATCH] rapier - 1.8 combat: correct INVULNERABLE_DURATION back to 20
+ ticks
+
+1.8.9 EntityLivingBase.maxHurtResistantTime = 20 (same as modern). the
+"10 tick invulnerability" from the wiki refers to the EFFECTIVE window
+(first half of duration where cumulative rule rejects weaker hits), not
+the duration constant itself. setting the constant to 10 halves that
+effective window to 5 ticks -- more permissive than 1.8. 20 is correct.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index e1d99b27599a5460af659c6202ac9a596d806cce..5cd4e52d731c9f819b3b7f658d9db150793e5a5f 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -185,7 +185,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     private static final int FREE_FALL_EVENTS_PER_ELYTRA_BREAK = 2;
+     public static final float BASE_JUMP_POWER = 0.42F;
+     protected static final float DEFAULT_KNOCKBACK = 0.4F;
+-    protected static final int INVULNERABLE_DURATION = 10; // rapier - 1.8 combat: 0.5s hurt-resistant window with cumulative-only hits in the first half (authentic 1.8.9 behavior)
++    protected static final int INVULNERABLE_DURATION = 20; // rapier - 1.8 combat: authentic 1.8.9 value. vanilla wiki says "10 tick immunity" but that is the first-half cumulative-only window; the actual constant is 20 in both 1.8 and 1.21
+     private static final double MAX_LINE_OF_SIGHT_TEST_RANGE = 128.0;
+     protected static final int LIVING_ENTITY_FLAG_IS_USING = 1;
+     protected static final int LIVING_ENTITY_FLAG_OFF_HAND = 2;
