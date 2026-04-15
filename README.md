@@ -11,47 +11,6 @@ From 1.9 onward Minecraft combat drifted further and further from its PvP roots:
 
 Rapier brings 1.8.9 combat to a current Paper. One jar, no plugins, any 1.21.x client connects natively. Mechanics that existed in 1.8 are surgically restored to their 1.8 form. Content that didn't exist in 1.8 — netherite, crossbow, trident, shields as a real offhand item — is left exactly as vanilla 1.21.11 ships it.
 
-## 📝 To Do
-
-### Timing and damage
-- [X] Remove attack cooldown
-- [X] Disable sweep attack
-- [X] Hide the cooldown bar (ATTACK_SPEED synced via modifier so vanilla clients see it)
-- [X] Sword damage restored to 1.8 values
-- [X] Axe damage restored to 1.8 values
-- [X] `INVULNERABLE_DURATION = 20` with 1.8 cumulative-only first half
-- [X] Remove 1.9+ damage-indicator particles and crit star animations
-
-### Blockhit
-- [X] Sword right-click 50% damage reduction via `BLOCKS_ATTACKS` component
-- [X] Network patch forces the component into the item packet so vanilla clients see it
-- [X] Use animation set to `NONE` (no shield-raise pose on swords)
-- [X] Movement slowed to 30% while blocking
-- [X] Force-update `useItem` so switching swords never leaves a stale blocking state
-- [X] Shield in offhand takes priority over sword blockhit
-
-### Enchantments and defense
-- [X] Sharpness `+1.25` per level (V = +6.25)
-- [X] Protection EPF curve (lvl 1 / 2 / 3 / 4 = 1 / 2 / 3 / 5)
-- [X] Armor flat 4% per point, no toughness bypass
-
-### Food, regen, mobility
-- [X] Disable saturation-based fast regen (only 1.8 slow regen remains)
-- [X] 1.8 exhaustion values (attack 0.3, jump 0.2, sprint-jump 0.8)
-- [X] Taking damage cancels sprint (enables W-tap)
-
-### Projectiles
-- [X] Fishing rod yoink with 1.8's vertical boost
-- [X] Throwables ignore shooter momentum (running doesn't boost pearls/potions)
-- [X] Splash potions and XP bottles use player pitch directly (no upward lob)
-
-### Post-1.8 items
-- [X] Mace smash attack and fall-damage negation disabled
-- [ ] Optional per-world toggle for 1.8 vs modern combat
-- [ ] Configurable knockback curve
-- [ ] Public Bukkit API for the sword-block component
-- [ ] CI regression tests that assert combat values
-
 ## ⚙️ Development
 
 1. Clone this repository.
