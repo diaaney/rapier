@@ -1,0 +1,221 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 06:21:13 -0700
+Subject: [PATCH] rapier - live-tunable knockback config
+ (horizontal/vertical/sprint knobs, /kb support)
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 8ab7edc79647a0ec600abe46c3b4aaa11de21c79..5e6b927c49171386e38ec1af9b912181945e8e84 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -3,7 +3,10 @@ package net.minecraft.server.rapier;
+ import java.io.IOException;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
++import java.util.LinkedHashMap;
++import java.util.Map;
+ import java.util.Properties;
++import java.util.concurrent.ConcurrentHashMap;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -11,80 +14,116 @@ import org.slf4j.LoggerFactory;
+  * Minimal runtime config for rapier behavior tuning.
+  * <p>
+  * Values are loaded from {@code rapier.properties} in the server working
+- * directory on first access. Missing or malformed entries fall back to
++ * directory on first access, and can be changed live via {@link #set} (used by
++ * the plugin-side /kb command) — changes apply to the very next hit and are
++ * persisted back to the file. Missing or malformed entries fall back to
+  * authentic 1.8.9 defaults, so deleting the file or omitting a key is safe.
+  */
+ public final class RapierConfig {
+     private static final Logger LOGGER = LoggerFactory.getLogger("Rapier");
+     private static final Path CONFIG_PATH = Path.of("rapier.properties");
+-    private static final Properties PROPS = new Properties();
+     private static volatile boolean loaded;
+ 
++    /** known keys with their authentic 1.8.9 defaults, in display order */
++    private static final Map<String, Double> DEFAULTS = new LinkedHashMap<>();
++    static {
++        DEFAULTS.put("knockback-scale", 1.0);          // global multiplier on every knockback path
++        DEFAULTS.put("knockback-horizontal", 1.0);     // horizontal-only multiplier on base knockback
++        DEFAULTS.put("knockback-vertical", 1.0);       // vertical-only multiplier on base knockback kick
++        DEFAULTS.put("knockback-vertical-limit", 0.4); // cap on upward velocity from a hit (1.8: 0.4)
++        DEFAULTS.put("sprint-horizontal", 1.0);        // multiplier on the sprint/KB-enchant extra horizontal push
++        DEFAULTS.put("sprint-vertical", 0.1);          // flat vertical add of the sprint/KB-enchant extra (1.8: 0.1)
++        DEFAULTS.put("attack-momentum-scale", 0.6);    // attacker X/Z damping after a sprint/KB hit (1.8: 0.6)
++    }
++
++    private static final ConcurrentHashMap<String, Double> VALUES = new ConcurrentHashMap<>();
++
+     private RapierConfig() {}
+ 
+     public static synchronized void load() {
+         if (loaded) return;
+         if (Files.exists(CONFIG_PATH)) {
++            Properties props = new Properties();
+             try (var reader = Files.newBufferedReader(CONFIG_PATH)) {
+-                PROPS.load(reader);
++                props.load(reader);
++                for (String key : DEFAULTS.keySet()) {
++                    String raw = props.getProperty(key);
++                    if (raw == null) continue;
++                    try {
++                        VALUES.put(key, Double.parseDouble(raw.trim()));
++                    } catch (NumberFormatException e) {
++                        LOGGER.warn("Invalid {} '{}' in rapier.properties, using default {}", key, raw, DEFAULTS.get(key));
++                    }
++                }
+                 LOGGER.info("Loaded rapier.properties");
+             } catch (IOException e) {
+                 LOGGER.warn("Failed to read rapier.properties, using defaults", e);
+             }
+         } else {
+-            writeDefaults();
++            save();
+         }
+         loaded = true;
+     }
+ 
+-    private static void writeDefaults() {
+-        String defaults = """
+-            # Rapier runtime config. Tunables for 1.8.9 combat restoration.
+-            # Edit and restart the server to apply changes.
++    /** re-reads the file, dropping any live-set values */
++    public static synchronized void reload() {
++        VALUES.clear();
++        loaded = false;
++        load();
++    }
+ 
+-            # Multiplier applied to every knockback magnitude after the vanilla
+-            # resistance calculation. 1.0 = authentic 1.8.9. Lower to soften,
+-            # raise for stronger combo potential.
+-            knockback-scale=1.0
++    /**
++     * Live-sets a known key and persists it. Returns false for unknown keys.
++     * Called reflectively from the plugin-side /kb command.
++     */
++    public static synchronized boolean set(String key, double value) {
++        if (!DEFAULTS.containsKey(key)) return false;
++        ensureLoaded();
++        VALUES.put(key, value);
++        save();
++        return true;
++    }
+ 
+-            # Horizontal velocity damping applied to the attacker after each
+-            # successful sprint-hit or KB-enchant hit. This is what makes faster
+-            # clicking feel like you take less knockback during hit trades --
+-            # each qualifying hit multiplies your own X/Z velocity by this value.
+-            # 0.6 = authentic 1.8.9. Lower (e.g. 0.4) = trades feel stickier,
+-            # higher (e.g. 0.8) = combos last longer and opponents push you more.
+-            attack-momentum-scale=0.6
+-            """;
+-        try {
+-            Files.writeString(CONFIG_PATH, defaults);
+-            LOGGER.info("Wrote default rapier.properties");
+-        } catch (IOException e) {
+-            LOGGER.warn("Failed to write default rapier.properties", e);
++    /** current effective values in display order. Called reflectively from /kb. */
++    public static Map<String, Double> snapshot() {
++        ensureLoaded();
++        Map<String, Double> out = new LinkedHashMap<>();
++        for (Map.Entry<String, Double> e : DEFAULTS.entrySet()) {
++            out.put(e.getKey(), VALUES.getOrDefault(e.getKey(), e.getValue()));
+         }
++        return out;
+     }
+ 
+-    public static double knockbackScale() {
+-        ensureLoaded();
+-        String raw = PROPS.getProperty("knockback-scale", "1.0");
++    private static void save() {
++        StringBuilder sb = new StringBuilder();
++        sb.append("# Rapier runtime config. Tunables for 1.8.9 combat restoration.\n");
++        sb.append("# All values apply live via /kb <key> <value>; this file just persists them.\n");
++        sb.append("# Defaults (authentic 1.8.9): ");
++        DEFAULTS.forEach((k, v) -> sb.append(k).append('=').append(v).append(' '));
++        sb.append('\n').append('\n');
++        for (Map.Entry<String, Double> e : DEFAULTS.entrySet()) {
++            sb.append(e.getKey()).append('=').append(VALUES.getOrDefault(e.getKey(), e.getValue())).append('\n');
++        }
+         try {
+-            return Double.parseDouble(raw);
+-        } catch (NumberFormatException e) {
+-            LOGGER.warn("Invalid knockback-scale '{}', using 1.0", raw);
+-            return 1.0;
++            Files.writeString(CONFIG_PATH, sb.toString());
++        } catch (IOException e) {
++            LOGGER.warn("Failed to write rapier.properties", e);
+         }
+     }
+ 
+-    public static double attackMomentumScale() {
++    private static double get(String key) {
+         ensureLoaded();
+-        String raw = PROPS.getProperty("attack-momentum-scale", "0.6");
+-        try {
+-            return Double.parseDouble(raw);
+-        } catch (NumberFormatException e) {
+-            LOGGER.warn("Invalid attack-momentum-scale '{}', using 0.6", raw);
+-            return 0.6;
+-        }
++        return VALUES.getOrDefault(key, DEFAULTS.get(key));
+     }
+ 
++    public static double knockbackScale()         { return get("knockback-scale"); }
++    public static double knockbackHorizontal()    { return get("knockback-horizontal"); }
++    public static double knockbackVertical()      { return get("knockback-vertical"); }
++    public static double knockbackVerticalLimit() { return get("knockback-vertical-limit"); }
++    public static double sprintHorizontal()       { return get("sprint-horizontal"); }
++    public static double sprintVertical()         { return get("sprint-vertical"); }
++    public static double attackMomentumScale()    { return get("attack-momentum-scale"); }
++
+     private static void ensureLoaded() {
+         if (!loaded) load();
+     }
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 11e0e0eab158e435eeee335f43ee1b438d17a745..11054d210c9a365b2d69bb7f8a55059480b210a0 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1545,7 +1545,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                     if (flag && f1 < originAmount && this.isBlocking()) {
+                         double rapierBlockKbMag = Math.sqrt(d * d + d1 * d1);
+                         if (rapierBlockKbMag > 1.0E-5) {
+-                            double rapierBlockKbStrength = 0.4 * net.minecraft.server.rapier.RapierConfig.knockbackScale(); // rapier - blocker impulse honors knockback-scale like every other knockback path
++                            double rapierBlockKbStrength = 0.4 * net.minecraft.server.rapier.RapierConfig.knockbackScale() * net.minecraft.server.rapier.RapierConfig.knockbackHorizontal(); // rapier - blocker impulse honors knockback-scale and the horizontal knob like every other knockback path
+                             net.minecraft.world.phys.Vec3 rapierBlockDelta = this.getDeltaMovement();
+                             this.setDeltaMovement(rapierBlockDelta.x - (d / rapierBlockKbMag) * rapierBlockKbStrength, rapierBlockDelta.y, rapierBlockDelta.z - (d1 / rapierBlockKbMag) * rapierBlockKbStrength);
+                             this.hurtMarked = true;
+@@ -2115,11 +2115,11 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 z = (this.random.nextDouble() - this.random.nextDouble()) * 0.01;
+             }
+ 
+-            Vec3 vec3 = new Vec3(x, 0.0, z).normalize().scale(strength);
++            Vec3 vec3 = new Vec3(x, 0.0, z).normalize().scale(strength * net.minecraft.server.rapier.RapierConfig.knockbackHorizontal()); // rapier - horizontal-only tuning knob on top of knockback-scale
+             // Paper start - knockback events
+             Vec3 finalVelocity = new Vec3(
+                 deltaMovement.x / 2.0 - vec3.x,
+-                Math.min(0.4, deltaMovement.y / 2.0 + strength), // rapier - 1.8 combat: unconditional upward kick, 1.8 always did motionY = min(0.4, motionY/2 + 0.4) regardless of onGround. modern kept falling velocity on air-hit which pushes combo'd targets into the ground.
++                Math.min(net.minecraft.server.rapier.RapierConfig.knockbackVerticalLimit(), deltaMovement.y / 2.0 + strength * net.minecraft.server.rapier.RapierConfig.knockbackVertical()), // rapier - 1.8 combat: unconditional upward kick, 1.8 always did motionY = min(0.4, motionY/2 + 0.4) regardless of onGround. vertical strength and cap are live-tunable via /kb.
+                 deltaMovement.z / 2.0 - vec3.z
+             );
+             Vec3 diff = finalVelocity.subtract(deltaMovement);
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 04a0e33757da953f42fe0cae8ed6b5ebc1e45776..ee0637d1c027f8929935163f6375fb152dfbc13c 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1215,8 +1215,9 @@ public abstract class Player extends Avatar implements ContainerUser {
+             // packet via the block below. knockback-scale still applies so the operator
+             // tuning knob covers the extra hit like it covers the base hit.
+             double rapierKbScale = net.minecraft.server.rapier.RapierConfig.knockbackScale();
++            double rapierSprintH = strength * rapierKbScale * net.minecraft.server.rapier.RapierConfig.sprintHorizontal(); // rapier - live-tunable sprint extra via /kb
+             target.push(
+-                -Mth.sin(this.getYRot() * (float) (Math.PI / 180.0)) * strength * rapierKbScale, 0.1 * rapierKbScale, Mth.cos(this.getYRot() * (float) (Math.PI / 180.0)) * strength * rapierKbScale
++                -Mth.sin(this.getYRot() * (float) (Math.PI / 180.0)) * rapierSprintH, net.minecraft.server.rapier.RapierConfig.sprintVertical() * rapierKbScale, Mth.cos(this.getYRot() * (float) (Math.PI / 180.0)) * rapierSprintH
+                 , this // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent
+             );
+             target.hurtMarked = true;
