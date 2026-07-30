@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 07:51:48 -0700
+Subject: [PATCH] rapier - 1.8 combat: rod point-blank hit margin, bobber
+ breaks on contact, rod-vertical + rod-hitbox knobs
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 463a113b14d09ef2d03e6068be9fbf79b597547b..4c752eba215df898416e3ae9b9df45f05fd46681 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -36,8 +36,10 @@ public final class RapierConfig {
+         DEFAULTS.put("sprint-vertical", 0.1);          // flat vertical add of the sprint/KB-enchant extra (1.8: 0.1)
+         DEFAULTS.put("attack-momentum-scale", 0.6);    // attacker X/Z damping after a sprint/KB hit (1.8: 0.6)
+         DEFAULTS.put("rod-knockback", 1.0);            // multiplier on the bobber-hit knockback (base 0.4 like a punch)
++        DEFAULTS.put("rod-vertical", 0.0);             // extra upward velocity added on top of the bobber-hit knockback
+         DEFAULTS.put("rod-cast-speed", 1.5);           // bobber initial velocity (1.8: 1.5)
+         DEFAULTS.put("rod-gravity", 0.04);             // bobber gravity per tick out of water (1.8: 0.04)
++        DEFAULTS.put("rod-hitbox", 0.3);               // hit detection inflation around targets (1.8: 0.3; modern shrank it to 0 which drops legit rod hits)
+     }
+ 
+     private static final ConcurrentHashMap<String, Double> VALUES = new ConcurrentHashMap<>();
+@@ -129,8 +131,10 @@ public final class RapierConfig {
+     public static double sprintVertical()         { return get("sprint-vertical"); }
+     public static double attackMomentumScale()    { return get("attack-momentum-scale"); }
+     public static double rodKnockback()           { return get("rod-knockback"); }
++    public static double rodVertical()            { return get("rod-vertical"); }
+     public static double rodCastSpeed()           { return get("rod-cast-speed"); }
+     public static double rodGravity()             { return get("rod-gravity"); }
++    public static double rodHitbox()              { return get("rod-hitbox"); }
+ 
+     private static void ensureLoaded() {
+         if (!loaded) load();
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 4dd734790fcb086ad7ef38e4b436b6dfe8706e74..1324643226a513fcb3166ec240c3815fa811d8f1 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -283,7 +283,8 @@ public class FishingHook extends Projectile {
+     }
+ 
+     private void checkCollision() {
+-        HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity);
++        // rapier - 1.8 combat: modern ramps the projectile hit margin from 0 to 0.3 over the bobber's first ~8 ticks (ProjectileUtil.computeMargin), silently dropping point-blank rod hits -- the bread-and-butter UHC rod range. 1.8.9 always swept with the full 0.3 box expansion. live-tunable via /kb rod-hitbox.
++        HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity, (float) net.minecraft.server.rapier.RapierConfig.rodHitbox());
+         this.preHitTargetOrDeflectSelf(hitResultOnMoveVector);
+     }
+ 
+@@ -311,6 +312,13 @@ public class FishingHook extends Projectile {
+                     rapierOwner.getZ() - rapierHitLiving.getZ(),
+                     this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK
+                 );
++                // rapier - extra rod-only vertical kick on top of the base knockback (rod-vertical in /kb, default 0 = pure 1.8)
++                double rapierRodVertical = net.minecraft.server.rapier.RapierConfig.rodVertical();
++                if (rapierRodVertical != 0.0) {
++                    net.minecraft.world.phys.Vec3 rapierRodDelta = rapierHitLiving.getDeltaMovement();
++                    rapierHitLiving.setDeltaMovement(rapierRodDelta.x, rapierRodDelta.y + rapierRodVertical, rapierRodDelta.z);
++                    rapierHitLiving.hurtMarked = true;
++                }
+                 if (this.level() instanceof ServerLevel rapierLevel) {
+                     rapierLevel.broadcastDamageEvent(rapierHitLiving, this.damageSources().thrown(this, rapierOwner));
+                     // rapier - 1.8 combat: rod contact plays the target's normal hurt sound (our manual hit pipeline bypasses playHurtSound, so hits were silent)
+@@ -321,6 +329,9 @@ public class FishingHook extends Projectile {
+                         (this.random.nextFloat() - this.random.nextFloat()) * 0.2F + 1.0F
+                     );
+                 }
++                // rapier - the bobber breaks on living-entity contact instead of hooking on: hooked bobbers sit at eye height and their sprite fills the victim's first-person view, and a lingering hook invites accidental drags. one cast = one clean hit.
++                this.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.HIT);
++                return;
+             }
+             this.setHookedEntity(result.getEntity());
+         }
+diff --git a/net/minecraft/world/entity/projectile/ProjectileUtil.java b/net/minecraft/world/entity/projectile/ProjectileUtil.java
+index 00e7dd53ed4f82001b681f32e1b88495d66669d0..4661f3536cf2bb530e82022415e629210419ca6f 100644
+--- a/net/minecraft/world/entity/projectile/ProjectileUtil.java
++++ b/net/minecraft/world/entity/projectile/ProjectileUtil.java
+@@ -35,6 +35,14 @@ public final class ProjectileUtil {
+         return getHitResult(vec3, projectile, filter, deltaMovement, level, computeMargin(projectile), ClipContext.Block.COLLIDER);
+     }
+ 
++    // rapier - 1.8 combat: margin-explicit variant so the fishing bobber can bypass the age-ramped computeMargin and always sweep with the 1.8 expansion
++    public static HitResult getHitResultOnMoveVector(Entity projectile, Predicate<Entity> filter, float margin) {
++        Vec3 deltaMovement = projectile.getDeltaMovement();
++        Level level = projectile.level();
++        Vec3 vec3 = projectile.position();
++        return getHitResult(vec3, projectile, filter, deltaMovement, level, margin, ClipContext.Block.COLLIDER);
++    }
++
+     public static Either<BlockHitResult, Collection<EntityHitResult>> getHitEntitiesAlong(
+         Entity attacker, AttackRange attackRange, Predicate<Entity> filter, ClipContext.Block clipContext
+     ) {
