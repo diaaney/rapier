@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 10:54:44 -0700
+Subject: [PATCH] rapier - rod-ignore-cooldown knob and ROD-GATED forensics
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 9d98f132c8ac95b7871a3bbe03aaa516876990f8..f1572dde5a4d71de12932fd7e7378f88ab52578c 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -44,6 +44,7 @@ public final class RapierConfig {
+         DEFAULTS.put("rod-hitbox", 0.3);               // hit detection inflation around targets (1.8: 0.3; modern shrank it to 0 which drops legit rod hits)
+         DEFAULTS.put("rod-air-scale", 1.0);            // multiplier on rod knockback when the target is airborne (1.0 = authentic; lower to soften mid-jump rod shots)
+         DEFAULTS.put("rod-friction", 0.3);             // victim momentum kept through a rod hit (1.8: 0.5). low default so back-to-back rod shots don't compound into a launch
++        DEFAULTS.put("rod-ignore-cooldown", 0.0);      // 1 = bobber contacts register even inside the invuln window (0 = authentic 1.8 gate, contacts in the first half are eaten)
+         DEFAULTS.put("debug-kb", 0.0);                 // 1 = log every hit/knockback application to console (combat forensics; noisy, leave off)
+     }
+ 
+@@ -144,6 +145,7 @@ public final class RapierConfig {
+     public static double rodHitbox()              { return get("rod-hitbox"); }
+     public static double rodAirScale()            { return get("rod-air-scale"); }
+     public static double rodFriction()            { return get("rod-friction"); }
++    public static double rodIgnoreCooldown()      { return get("rod-ignore-cooldown"); }
+ 
+     public static boolean debugKb()               { return get("debug-kb") != 0.0; }
+ 
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index de9e9130f8d56d4c53d0c06d795a61917f475200..e4091f38dbb289d9524979826000b4f92613551f 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -302,8 +302,8 @@ public class FishingHook extends Projectile {
+             if (rapierOwner != null && hit instanceof net.minecraft.world.entity.LivingEntity rapierHitLiving
+                 // rapier - creative/spectator players are immune to rod hits (1.8: capabilities.disableDamage rejected thrown damage)
+                 && !(rapierHitLiving instanceof Player rapierHitPlayer && (rapierHitPlayer.getAbilities().invulnerable || rapierHitPlayer.isSpectator()))
+-                // rapier - 1.8 hit cooldown: a contact inside the first half of the invuln window does not register (authentic attackEntityFrom gate, hurtResistantTime > maxHurtResistantTime/2), so rod spam can't machine-gun knockback
+-                && rapierHitLiving.invulnerableTime <= rapierHitLiving.invulnerableDuration / 2) {
++                // rapier - 1.8 hit cooldown: a contact inside the first half of the invuln window does not register (authentic attackEntityFrom gate, hurtResistantTime > maxHurtResistantTime/2), so rod spam can't machine-gun knockback. rod-ignore-cooldown=1 bypasses the gate.
++                && (rapierHitLiving.invulnerableTime <= rapierHitLiving.invulnerableDuration / 2 || net.minecraft.server.rapier.RapierConfig.rodIgnoreCooldown() != 0.0)) {
+                 net.minecraft.server.rapier.RapierConfig.debug("ROD-HIT angler=" + rapierOwner.getName().getString() + " victim=" + rapierHitLiving.getName().getString() + " victimOnGround=" + rapierHitLiving.onGround()); // rapier - debug-kb
+                 rapierHitLiving.invulnerableTime = rapierHitLiving.invulnerableDuration;
+                 rapierHitLiving.lastHurt = 0.0F; // rapier - 1.8: the 0-damage thrown attack set lastDamage=0, so the follow-up sword hit inside the invuln window deals its FULL damage. without this the stale lastHurt swallows the rod+sword combo ("kb but no hit").
+@@ -361,6 +361,8 @@ public class FishingHook extends Projectile {
+                         (this.random.nextFloat() - this.random.nextFloat()) * 0.2F + 1.0F
+                     );
+                 }
++            } else if (rapierOwner != null && hit instanceof net.minecraft.world.entity.LivingEntity rapierGatedLiving && rapierGatedLiving.invulnerableTime > rapierGatedLiving.invulnerableDuration / 2) {
++                net.minecraft.server.rapier.RapierConfig.debug("ROD-GATED victim=" + rapierGatedLiving.getName().getString() + " invuln=" + rapierGatedLiving.invulnerableTime + " (contact eaten by the 1.8 hit cooldown)"); // rapier - debug-kb
+             }
+             this.setHookedEntity(result.getEntity());
+             // rapier - hide the hooked bobber from its victim only. the hooked position is computed CLIENT-side (the client's own FishingHook tick pins it at eye height via DATA_HOOKED_ENTITY), so server-side repositioning can't unblock the victim's view -- instead the victim's client just never renders it. the angler and everyone else still see the bobber and line normally.
