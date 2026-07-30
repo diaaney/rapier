@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 01:47:56 -0700
+Subject: [PATCH] rapier - 1.8 combat: rod hits play the hurt sound, reeling
+ never drags entities
+
+hit sound: our manual rod-hit pipeline (0-damage side effects) bypasses
+playHurtSound, so cast hits were silent. broadcast the target's normal
+hurt sound (entity.player.hurt for players) with the vanilla pitch
+variance so a rod hit sounds exactly like a melee hit.
+
+no pull: reeling in with a hooked player or mob no longer applies the
+pull velocity -- rod knockback comes from the cast hit only. dropped
+items still get pulled so rod-fishing loot works.
+
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 41f8588ca8dfa8295593cb1264284d07a0793f6c..17efcfc919cae0e5dd2798df34087623b8de19bb 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -306,6 +306,13 @@ public class FishingHook extends Projectile {
+                 rapierHitLiving.hurtMarked = true;
+                 if (this.level() instanceof ServerLevel rapierLevel) {
+                     rapierLevel.broadcastDamageEvent(rapierHitLiving, this.damageSources().thrown(this, rapierOwner));
++                    // rapier - 1.8 combat: rod contact plays the target's normal hurt sound (our manual hit pipeline bypasses playHurtSound, so hits were silent)
++                    rapierLevel.playSound(
++                        null, rapierHitLiving.getX(), rapierHitLiving.getY(), rapierHitLiving.getZ(),
++                        rapierHitLiving instanceof Player ? net.minecraft.sounds.SoundEvents.PLAYER_HURT : net.minecraft.sounds.SoundEvents.GENERIC_HURT,
++                        rapierHitLiving.getSoundSource(), 1.0F,
++                        (this.random.nextFloat() - this.random.nextFloat()) * 0.2F + 1.0F
++                    );
+                 }
+             }
+             this.setHookedEntity(result.getEntity());
+@@ -528,7 +535,8 @@ public class FishingHook extends Projectile {
+                 }
+                 if (this.hookedIn != null) { // Paper - re-check to see if there is a hooked entity
+                 // CraftBukkit end
+-                this.pullEntity(this.hookedIn);
++                // rapier - 1.8 combat: reeling in does NOT drag the hooked entity (no pull on players or mobs); the rod's KB comes from the cast hit only
++                if (this.hookedIn instanceof ItemEntity) this.pullEntity(this.hookedIn);
+                 CriteriaTriggers.FISHING_ROD_HOOKED.trigger((ServerPlayer)playerOwner, stack, this, Collections.emptyList());
+                 this.level().broadcastEntityEvent(this, EntityEvent.FISHING_ROD_REEL_IN);
+                 i = 3; // rapier - 1.8 combat: pulling any hooked entity costs 3 durability (1.8.9 handleHookRetraction; 1.9+ raised living entities to 5, halving rod lifespan in rod PvP)
