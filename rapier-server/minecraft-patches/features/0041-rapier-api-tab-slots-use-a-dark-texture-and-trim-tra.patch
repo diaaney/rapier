@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 04:30:57 -0700
+Subject: [PATCH] rapier - api: tab slots use a dark texture and trim trailing
+ empty columns
+
+fake slot profiles now carry a mineskin-signed flat dark skin so the
+head icons blend with the tab background instead of rendering random
+default skins. setSlots also sends only as many 20-row columns as have
+content (rounded up), so a 3-column layout draws 3 columns.
+
+diff --git a/net/minecraft/server/rapier/RapierTabList.java b/net/minecraft/server/rapier/RapierTabList.java
+index fa408b1b907d2959484aeaa03aafa06d19ab3401..6addf1862da13b2fdfda14454c21336a09006d8f 100644
+--- a/net/minecraft/server/rapier/RapierTabList.java
++++ b/net/minecraft/server/rapier/RapierTabList.java
+@@ -40,6 +40,16 @@ public final class RapierTabList {
+         }
+     }
+ 
++    /** mineskin-signed 64x64 flat dark skin so slot heads render as a subtle dark square */
++    private static final com.mojang.authlib.properties.Property DARK_TEXTURE = new com.mojang.authlib.properties.Property(
++            "textures",
++            "ewogICJ0aW1lc3RhbXAiIDogMTc4NTQxMDk2MTI2MSwKICAicHJvZmlsZUlkIiA6ICI4MTFkNjM0NzUwY2Y0ZDI0OTJmZDcxYTViZjZhZjI3MSIsCiAgInByb2ZpbGVOYW1lIiA6ICJzcGlmZnRvcGlhMSIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS85MzgzNjkyMDkyZGRmOTdhMzFjY2NiMTkzYmY1YzZkMmQwOWY0NWI4Yzk2YjdkYWI5Zjc5ZDllYWRhMjAwYjEwIgogICAgfQogIH0KfQ==",
++            "xlyvBGxbH1tcw+iQClIkE0UAio6p/72knIFUvLTDabdL4f931qFdhaq3RF27R0DoEjkxFXRc8BfrMPt/+q2/ldI4j0PzUmLgN6yCCc4+31sbjf/964/uLQG45Kavcj+OG0EUjUJLaJW/NTDodYuCEEKHUBfFQPXAwqq0tyHz5MXgAsWfN9Cr74LHhBaa0P42KUHXBuXMGnHzd5yZYdgTBxiJNzU4Gk1FhU/DobAB42qcEza8qKm7FPy9q86WDNOAY+iq0M25H9Kf5Qw9wSgtvgX4GLPmeuvBs1siSBekm7X8TWst49eG8trwrpaWqSHXQgRZsdGZvBobGcQ6DoE27vc7WikgkJ+Wo+1sYOV+Vl3YRKXrzaGRHnVX5DWureX0c6TjhPWVoIYiziDojNAtHUFbsZcckk+Uz2jJY2AHiTm0laGnIoH4WAuW19UMBMIsrb39/7cMthXSNjkj7rCKKR9rz/Tbuqwsoe879g+QzpJpU5Dtib+NjHjmm/BpcRJMmHxP2GVYrLzUVRcdR/ItTPSyrGE2o0FgBPOdBufJNbfKuHOsQ6Et1moJBGMl2zq5o+dnyTwmMy+hzQSx3EPogthB44iG4BZCehlz/dBlt1T02fJlTvINfPkq+IOOeyosmZm629itENJ3Ao5+qKq+bss2cKmoipQ/FAOX2P7pWU8=");
++
++    /** shared read-only property map with the dark texture for every slot profile */
++    private static final com.mojang.authlib.properties.PropertyMap DARK_PROPS = new com.mojang.authlib.properties.PropertyMap(
++            com.google.common.collect.ImmutableMultimap.of("textures", DARK_TEXTURE));
++
+     private RapierTabList() {}
+ 
+     public static void setSlots(org.bukkit.entity.Player viewer, List<net.kyori.adventure.text.Component> lines) {
+@@ -56,17 +66,26 @@ public final class RapierTabList {
+                     EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED), unlist));
+         }
+ 
+-        // 2) add/update the fixed slots
+-        List<ClientboundPlayerInfoUpdatePacket.Entry> entries = new ArrayList<>(SLOTS);
+-        for (int i = 0; i < SLOTS; i++) {
++        // 2) add/update the fixed slots. Sending only as many columns as have content
++        // (rounded up to full 20-row columns) lets the client draw 3 columns when the
++        // 4th is unused instead of a trailing empty one.
++        int count = Math.min(SLOTS, Math.max(20, ((lines.size() + 19) / 20) * 20));
++        List<ClientboundPlayerInfoUpdatePacket.Entry> entries = new ArrayList<>(count);
++        for (int i = 0; i < count; i++) {
+             net.kyori.adventure.text.Component line = i < lines.size() ? lines.get(i) : null;
+             net.minecraft.network.chat.Component display = line != null
+                     ? io.papermc.paper.adventure.PaperAdventure.asVanilla(line)
+                     : net.minecraft.network.chat.Component.empty();
+-            GameProfile profile = new GameProfile(SLOT_IDS[i], "!ts" + i);
++            // authlib 7 GameProfile is a record whose default PropertyMap is the immutable EMPTY, so properties must go in via the constructor
++            GameProfile profile = new GameProfile(SLOT_IDS[i], "!ts" + i, DARK_PROPS);
+             entries.add(new ClientboundPlayerInfoUpdatePacket.Entry(
+                     SLOT_IDS[i], profile, true, 0, GameType.SURVIVAL, display, false, SLOTS - i, null));
+         }
++
++        // drop any slots beyond the used count (harmless if they were never added)
++        if (count < SLOTS) {
++            handle.connection.send(new ClientboundPlayerInfoRemovePacket(SLOT_ID_LIST.subList(count, SLOTS)));
++        }
+         handle.connection.send(new ClientboundPlayerInfoUpdatePacket(EnumSet.of(
+                 ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER,
+                 ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED,
