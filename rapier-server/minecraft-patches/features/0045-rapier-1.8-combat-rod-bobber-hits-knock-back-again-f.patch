@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 07:17:27 -0700
+Subject: [PATCH] rapier - 1.8 combat: rod bobber hits knock back again;
+ friction + rod physics knobs in /kb
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 5e6b927c49171386e38ec1af9b912181945e8e84..463a113b14d09ef2d03e6068be9fbf79b597547b 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -31,9 +31,13 @@ public final class RapierConfig {
+         DEFAULTS.put("knockback-horizontal", 1.0);     // horizontal-only multiplier on base knockback
+         DEFAULTS.put("knockback-vertical", 1.0);       // vertical-only multiplier on base knockback kick
+         DEFAULTS.put("knockback-vertical-limit", 0.4); // cap on upward velocity from a hit (1.8: 0.4)
++        DEFAULTS.put("knockback-friction", 0.5);       // how much of the victim's own momentum survives a hit (1.8: 0.5 = the motion/2). lower = hits stop runners harder
+         DEFAULTS.put("sprint-horizontal", 1.0);        // multiplier on the sprint/KB-enchant extra horizontal push
+         DEFAULTS.put("sprint-vertical", 0.1);          // flat vertical add of the sprint/KB-enchant extra (1.8: 0.1)
+         DEFAULTS.put("attack-momentum-scale", 0.6);    // attacker X/Z damping after a sprint/KB hit (1.8: 0.6)
++        DEFAULTS.put("rod-knockback", 1.0);            // multiplier on the bobber-hit knockback (base 0.4 like a punch)
++        DEFAULTS.put("rod-cast-speed", 1.5);           // bobber initial velocity (1.8: 1.5)
++        DEFAULTS.put("rod-gravity", 0.04);             // bobber gravity per tick out of water (1.8: 0.04)
+     }
+ 
+     private static final ConcurrentHashMap<String, Double> VALUES = new ConcurrentHashMap<>();
+@@ -120,9 +124,13 @@ public final class RapierConfig {
+     public static double knockbackHorizontal()    { return get("knockback-horizontal"); }
+     public static double knockbackVertical()      { return get("knockback-vertical"); }
+     public static double knockbackVerticalLimit() { return get("knockback-vertical-limit"); }
++    public static double knockbackFriction()      { return get("knockback-friction"); }
+     public static double sprintHorizontal()       { return get("sprint-horizontal"); }
+     public static double sprintVertical()         { return get("sprint-vertical"); }
+     public static double attackMomentumScale()    { return get("attack-momentum-scale"); }
++    public static double rodKnockback()           { return get("rod-knockback"); }
++    public static double rodCastSpeed()           { return get("rod-cast-speed"); }
++    public static double rodGravity()             { return get("rod-gravity"); }
+ 
+     private static void ensureLoaded() {
+         if (!loaded) load();
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 11054d210c9a365b2d69bb7f8a55059480b210a0..0241e361193fb80a3d40b50579bb1a8aa4b57cb6 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2116,11 +2116,12 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             }
+ 
+             Vec3 vec3 = new Vec3(x, 0.0, z).normalize().scale(strength * net.minecraft.server.rapier.RapierConfig.knockbackHorizontal()); // rapier - horizontal-only tuning knob on top of knockback-scale
++            double rapierFriction = net.minecraft.server.rapier.RapierConfig.knockbackFriction(); // rapier - momentum kept through a hit (1.8: 0.5, the motion/2). live-tunable via /kb; lower stops runners harder
+             // Paper start - knockback events
+             Vec3 finalVelocity = new Vec3(
+-                deltaMovement.x / 2.0 - vec3.x,
+-                Math.min(net.minecraft.server.rapier.RapierConfig.knockbackVerticalLimit(), deltaMovement.y / 2.0 + strength * net.minecraft.server.rapier.RapierConfig.knockbackVertical()), // rapier - 1.8 combat: unconditional upward kick, 1.8 always did motionY = min(0.4, motionY/2 + 0.4) regardless of onGround. vertical strength and cap are live-tunable via /kb.
+-                deltaMovement.z / 2.0 - vec3.z
++                deltaMovement.x * rapierFriction - vec3.x,
++                Math.min(net.minecraft.server.rapier.RapierConfig.knockbackVerticalLimit(), deltaMovement.y * rapierFriction + strength * net.minecraft.server.rapier.RapierConfig.knockbackVertical()), // rapier - 1.8 combat: unconditional upward kick, 1.8 always did motionY = min(0.4, motionY/2 + 0.4) regardless of onGround. vertical strength and cap are live-tunable via /kb.
++                deltaMovement.z * rapierFriction - vec3.z
+             );
+             Vec3 diff = finalVelocity.subtract(deltaMovement);
+             io.papermc.paper.event.entity.EntityKnockbackEvent event = CraftEventFactory.callEntityKnockbackEvent((org.bukkit.craftbukkit.entity.CraftLivingEntity) this.getBukkitEntity(), attacker, attacker, eventCause, strength, diff);
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 17efcfc919cae0e5dd2798df34087623b8de19bb..4dd734790fcb086ad7ef38e4b436b6dfe8706e74 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -108,11 +108,11 @@ public class FishingHook extends Projectile {
+         double eyeY = owner.getEyeY();
+         double d1 = owner.getZ() - cos * 0.3;
+         this.snapTo(d, eyeY, d1, yRot, xRot);
+-        // rapier - 1.8 combat: cast velocity 1.5 (authentic 1.8.9 EntityFishHook setThrowableHeading(.., 1.5F, 1.0F)). modern Paper uses ~0.6/len + 0.5 which nets ~1.1 magnitude -- noticeably slower than 1.8.
++        // rapier - 1.8 combat: cast velocity 1.5 (authentic 1.8.9 EntityFishHook setThrowableHeading(.., 1.5F, 1.0F)). modern Paper uses ~0.6/len + 0.5 which nets ~1.1 magnitude -- noticeably slower than 1.8. live-tunable via /kb rod-cast-speed.
+         Vec3 vec3 = new Vec3(-sin, Mth.clamp(-(sin1 / f), -5.0F, 5.0F), -cos)
+             .normalize()
+             .add(this.random.triangle(0.0, 0.0172275), this.random.triangle(0.0, 0.0172275), this.random.triangle(0.0, 0.0172275))
+-            .scale(1.5);
++            .scale(net.minecraft.server.rapier.RapierConfig.rodCastSpeed());
+         this.setDeltaMovement(vec3);
+         this.setYRot((float)(Mth.atan2(vec3.x, vec3.z) * 180.0F / (float)Math.PI));
+         this.setXRot((float)(Mth.atan2(vec3.y, vec3.horizontalDistance()) * 180.0F / (float)Math.PI));
+@@ -251,7 +251,7 @@ public class FishingHook extends Projectile {
+             }
+ 
+             if (!fluidState.is(FluidTags.WATER) && !this.onGround() && this.hookedIn == null) {
+-                this.setDeltaMovement(this.getDeltaMovement().add(0.0, -0.04, 0.0)); // rapier - 1.8 combat: bobber gravity 0.04 (1.8.9 EntityFishHook applied motionY += 0.04 * d11 with d11 = -1 out of water; modern lightened it to 0.03 which makes casts fly flatter and overshoot the 1.8 arc)
++                this.setDeltaMovement(this.getDeltaMovement().add(0.0, -net.minecraft.server.rapier.RapierConfig.rodGravity(), 0.0)); // rapier - 1.8 combat: bobber gravity 0.04 (1.8.9 EntityFishHook applied motionY += 0.04 * d11 with d11 = -1 out of water; modern lightened it to 0.03 which makes casts fly flatter and overshoot the 1.8 arc). live-tunable via /kb rod-gravity.
+             }
+ 
+             this.move(MoverType.SELF, this.getDeltaMovement());
+@@ -304,6 +304,13 @@ public class FishingHook extends Projectile {
+                 rapierHitLiving.hurtTime = 10;
+                 rapierHitLiving.hurtDuration = 10;
+                 rapierHitLiving.hurtMarked = true;
++                // rapier - 1.8 combat: the bobber hit knocks the target back. 1.8's attackEntityFrom(causeThrownDamage, 0.0F) rode the hurt path which always applied knockBack(0.4) away from the angler; our manual hit pipeline skipped it, leaving rod hits with animation+sound but no push. rod-knockback in /kb scales it.
++                rapierHitLiving.knockback(
++                    0.4F * net.minecraft.server.rapier.RapierConfig.rodKnockback(),
++                    rapierOwner.getX() - rapierHitLiving.getX(),
++                    rapierOwner.getZ() - rapierHitLiving.getZ(),
++                    this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK
++                );
+                 if (this.level() instanceof ServerLevel rapierLevel) {
+                     rapierLevel.broadcastDamageEvent(rapierHitLiving, this.damageSources().thrown(this, rapierOwner));
+                     // rapier - 1.8 combat: rod contact plays the target's normal hurt sound (our manual hit pipeline bypasses playHurtSound, so hits were silent)
