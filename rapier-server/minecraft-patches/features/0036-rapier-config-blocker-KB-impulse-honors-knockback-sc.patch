@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 21:34:17 -0700
+Subject: [PATCH] rapier - config: blocker KB impulse honors knockback-scale
+
+the second horizontal impulse applied to partial-blockers hardcoded
+0.4, escaping the knockback-scale tuning knob that every other
+knockback path respects. multiply by the scale so operators tuning
+global KB also tune the blocker impulse. default 1.0 = no behavior
+change from the live-tested feel.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 790cd3ea667b3242301b2a24ea7b28e66ab7020c..11e0e0eab158e435eeee335f43ee1b438d17a745 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1545,8 +1545,9 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                     if (flag && f1 < originAmount && this.isBlocking()) {
+                         double rapierBlockKbMag = Math.sqrt(d * d + d1 * d1);
+                         if (rapierBlockKbMag > 1.0E-5) {
++                            double rapierBlockKbStrength = 0.4 * net.minecraft.server.rapier.RapierConfig.knockbackScale(); // rapier - blocker impulse honors knockback-scale like every other knockback path
+                             net.minecraft.world.phys.Vec3 rapierBlockDelta = this.getDeltaMovement();
+-                            this.setDeltaMovement(rapierBlockDelta.x - (d / rapierBlockKbMag) * 0.4, rapierBlockDelta.y, rapierBlockDelta.z - (d1 / rapierBlockKbMag) * 0.4);
++                            this.setDeltaMovement(rapierBlockDelta.x - (d / rapierBlockKbMag) * rapierBlockKbStrength, rapierBlockDelta.y, rapierBlockDelta.z - (d1 / rapierBlockKbMag) * rapierBlockKbStrength);
+                             this.hurtMarked = true;
+                         }
+                     }

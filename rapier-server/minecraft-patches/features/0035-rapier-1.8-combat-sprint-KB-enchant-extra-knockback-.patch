@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 21:33:29 -0700
+Subject: [PATCH] rapier - 1.8 combat: sprint/KB-enchant extra knockback via
+ 1.8.9 addVelocity semantics
+
+1.8.9 applied the sprint / Knockback-enchant bonus as a pure addVelocity
+on top of the base knockback: (-sin(yaw) * i * 0.5, +0.1, cos(yaw) * i * 0.5).
+modern routes it through LivingEntity.knockback() which halves the
+target current motion AGAIN (the base hit already halved it) and
+re-applies a capped vertical kick. measured on a standing ground target,
+a sprint hit lands at ~0.7 horizontal / 0.40 vertical instead of the
+authentic ~0.9 / 0.46 -- weaker sends and no bounce above the cap.
+
+replaced with Entity.push(), which has exact addVelocity semantics and
+fires the Paper EntityPushedByEntityAttackEvent for plugin compat.
+hurtMarked=true delivers the motion to the victim client through the
+existing CraftBukkit velocity block (which also restores the pre-hit
+server motion, same as 1.8 d0/d1/d2 restore). knockback-scale from
+rapier.properties applies to the extra so the tuning knob keeps
+covering the full hit.
+
+strength magnitudes were already equivalent (getKnockback returns
+ench/2 and sprint adds 0.5, matching 1.8 i*0.5) -- only the
+application semantics changed.
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 4db2fa629a3cd988ac5d9d01ecfee885d2d9a355..04a0e33757da953f42fe0cae8ed6b5ebc1e45776 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1202,14 +1202,25 @@ public abstract class Player extends Avatar implements ContainerUser {
+     @Override
+     public void causeExtraKnockback(Entity target, float strength, Vec3 currentMovement) {
+         if (strength > 0.0F) {
+-            if (target instanceof LivingEntity livingEntity) {
+-                livingEntity.knockback(strength, Mth.sin(this.getYRot() * (float) (Math.PI / 180.0)), -Mth.cos(this.getYRot() * (float) (Math.PI / 180.0)), this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK); // Paper - knockback events
+-            } else {
+-                target.push(
+-                    -Mth.sin(this.getYRot() * (float) (Math.PI / 180.0)) * strength, 0.1, Mth.cos(this.getYRot() * (float) (Math.PI / 180.0)) * strength
+-                    , this // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent
+-                );
+-            }
++            // rapier start - 1.8 combat: sprint/KB-enchant extra knockback uses 1.8.9 addVelocity semantics
++            // 1.8.9 (EntityPlayer.attackTargetEntityWithCurrentItem) applied the extra as
++            //   target.addVelocity(-sin(yaw) * i * 0.5, 0.1, cos(yaw) * i * 0.5)
++            // a pure ADD on top of the base-knockback motion, with a flat +0.1 vertical.
++            // modern folds it through LivingEntity.knockback(), which HALVES the target's
++            // already-knocked-back motion again and re-applies the capped vertical kick:
++            // a ground sprint-hit lands at ~0.7 horizontal / 0.4 vertical instead of the
++            // authentic 0.9 / 0.46. push() has exact addVelocity semantics (plus the Paper
++            // EntityPushedByEntityAttackEvent for plugin compat) and sets needsSync for
++            // spectators; hurtMarked makes the victim's own client receive the motion
++            // packet via the block below. knockback-scale still applies so the operator
++            // tuning knob covers the extra hit like it covers the base hit.
++            double rapierKbScale = net.minecraft.server.rapier.RapierConfig.knockbackScale();
++            target.push(
++                -Mth.sin(this.getYRot() * (float) (Math.PI / 180.0)) * strength * rapierKbScale, 0.1 * rapierKbScale, Mth.cos(this.getYRot() * (float) (Math.PI / 180.0)) * strength * rapierKbScale
++                , this // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent
++            );
++            target.hurtMarked = true;
++            // rapier end
+ 
+             // rapier - configurable attacker momentum damping (was hardcoded 0.6 = authentic 1.8.9)
+             double rapierAttackMomentumScale = net.minecraft.server.rapier.RapierConfig.attackMomentumScale();
