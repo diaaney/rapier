@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 21:29:32 -0700
+Subject: [PATCH] rapier - 1.8 combat: natural regen exhaustion 3.0
+
+1.8.9 FoodStats charged addExhaustion(3.0F) per HP healed by natural
+regen. 1.11 doubled the cost to 6.0 (spigot regenExhaustion default),
+draining hunger twice as fast during regen. hardcoded back to 3.0 so
+hunger pacing over a long fight matches 1.8.
+
+diff --git a/net/minecraft/world/food/FoodData.java b/net/minecraft/world/food/FoodData.java
+index 891b90e1f3a864889177e86bf426fc80b680f0f9..f2c2df298929f07c2d27ec9193584393fe739abc 100644
+--- a/net/minecraft/world/food/FoodData.java
++++ b/net/minecraft/world/food/FoodData.java
+@@ -80,7 +80,7 @@ public class FoodData {
+             if (this.tickTimer >= this.unsaturatedRegenRate) { // CraftBukkit - add regen rate manipulation
+                 player.heal(1.0F, org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.SATIATED); // CraftBukkit - added RegainReason
+                 // this.addExhaustion(6.0F); CraftBukkit - EntityExhaustionEvent
+-                player.causeFoodExhaustion(player.level().spigotConfig.regenExhaustion, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.REGEN); // CraftBukkit - EntityExhaustionEvent // Spigot - Change to use configurable value
++                player.causeFoodExhaustion(3.0F, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.REGEN); // rapier - 1.8 combat: regen exhaustion 3.0 (1.8.9 FoodStats.addExhaustion(3.0F); 1.11+ doubled it to 6.0 making natural regen drain hunger twice as fast)
+                 this.tickTimer = 0;
+             }
+         } else if (this.foodLevel <= 0) {

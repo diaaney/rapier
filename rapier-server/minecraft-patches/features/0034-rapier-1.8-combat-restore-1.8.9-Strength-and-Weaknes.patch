@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 21:30:01 -0700
+Subject: [PATCH] rapier - 1.8 combat: restore 1.8.9 Strength and Weakness
+ formulas
+
+Strength: 1.8.9 PotionAttackDamage applied 1.3 * (amplifier+1) with
+operation MULTIPLY_TOTAL, i.e. +130% damage per level. 1.9 flattened
+it to +3 damage per level. AttributeTemplate.create already scales
+the template amount by (amplifier+1), so amount=1.3 with
+ADD_MULTIPLIED_TOTAL reproduces the 1.8 curve exactly:
+Strength I = 2.3x, Strength II = 3.6x.
+
+Weakness: 1.8.9 applied a flat -0.5 damage per level. 1.9 changed it
+to -4 per level, which zeroes out sword damage instead of shaving
+half a heart.
+
+diff --git a/net/minecraft/world/effect/MobEffects.java b/net/minecraft/world/effect/MobEffects.java
+index 8acce0f335110c9a97d3f9915ca00e7034901cbe..ca027869d37289b8d42b3f754790cde109e3e160 100644
+--- a/net/minecraft/world/effect/MobEffects.java
++++ b/net/minecraft/world/effect/MobEffects.java
+@@ -43,7 +43,8 @@ public class MobEffects {
+     public static final Holder<MobEffect> STRENGTH = register(
+         "strength",
+         new MobEffect(MobEffectCategory.BENEFICIAL, 16762624)
+-            .addAttributeModifier(Attributes.ATTACK_DAMAGE, Identifier.withDefaultNamespace("effect.strength"), 3.0, AttributeModifier.Operation.ADD_VALUE)
++            // rapier - 1.8 combat: 1.8.9 Strength was +130% damage per level (PotionAttackDamage: 1.3 * (amplifier+1), operation MULTIPLY_TOTAL). 1.9 changed it to +3 flat per level. AttributeTemplate.create scales amount by (amplifier+1) so 1.3 ADD_MULTIPLIED_TOTAL reproduces the 1.8 formula exactly.
++            .addAttributeModifier(Attributes.ATTACK_DAMAGE, Identifier.withDefaultNamespace("effect.strength"), 1.3, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL)
+     );
+     public static final Holder<MobEffect> INSTANT_HEALTH = register("instant_health", new HealOrHarmMobEffect(MobEffectCategory.BENEFICIAL, 16262179, false));
+     public static final Holder<MobEffect> INSTANT_DAMAGE = register("instant_damage", new HealOrHarmMobEffect(MobEffectCategory.HARMFUL, 11101546, true));
+@@ -75,7 +76,8 @@ public class MobEffects {
+     public static final Holder<MobEffect> WEAKNESS = register(
+         "weakness",
+         new MobEffect(MobEffectCategory.HARMFUL, 4738376)
+-            .addAttributeModifier(Attributes.ATTACK_DAMAGE, Identifier.withDefaultNamespace("effect.weakness"), -4.0, AttributeModifier.Operation.ADD_VALUE)
++            // rapier - 1.8 combat: 1.8.9 Weakness was -0.5 damage per level (PotionAttackDamage: -0.5F * (amplifier+1), flat). 1.9 changed it to -4 flat per level which guts sword damage entirely.
++            .addAttributeModifier(Attributes.ATTACK_DAMAGE, Identifier.withDefaultNamespace("effect.weakness"), -0.5, AttributeModifier.Operation.ADD_VALUE)
+     );
+     public static final Holder<MobEffect> POISON = register("poison", new PoisonMobEffect(MobEffectCategory.HARMFUL, 8889187));
+     public static final Holder<MobEffect> WITHER = register("wither", new WitherMobEffect(MobEffectCategory.HARMFUL, 7561558));
