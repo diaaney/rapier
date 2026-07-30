@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 04:17:18 -0700
+Subject: [PATCH] rapier - api: RapierTabList primitive for fixed-slot tab
+ layouts
+
+setSlots replaces the viewer's player list with up to 80 fake entries
+(20 rows x 4 columns, order pinned via listOrder) and unlists real
+players for that viewer; clearSlots restores the vanilla list. takes
+bukkit Player + adventure Components so plugins can call it through
+cached reflection without needing a rapier-api artifact.
+
+diff --git a/net/minecraft/server/rapier/RapierTabList.java b/net/minecraft/server/rapier/RapierTabList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa408b1b907d2959484aeaa03aafa06d19ab3401
+--- /dev/null
++++ b/net/minecraft/server/rapier/RapierTabList.java
+@@ -0,0 +1,97 @@
++package net.minecraft.server.rapier;
++
++import com.mojang.authlib.GameProfile;
++import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
++import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
++import net.minecraft.server.MinecraftServer;
++import net.minecraft.server.level.ServerPlayer;
++import net.minecraft.world.level.GameType;
++
++import java.util.ArrayList;
++import java.util.EnumSet;
++import java.util.List;
++import java.util.UUID;
++
++/**
++ * Rapier primitive for fixed-slot tab layouts (the classic 80-slot network tab).
++ * <p>
++ * {@link #setSlots} replaces the viewer's player list with up to 80 fake entries
++ * whose display names are the given lines; real players are unlisted for that
++ * viewer only. The client fills columns top-to-bottom, left-to-right (20 rows
++ * per column), and entry order is pinned via listOrder, so index i lands at
++ * column i/20, row i%20 deterministically.
++ * <p>
++ * {@link #clearSlots} removes the fake entries and re-lists the real players,
++ * restoring the vanilla online list.
++ * <p>
++ * Plugins are expected to call this reflectively (bukkit Player + adventure
++ * Components are both API-visible types), so no rapier-api artifact is needed.
++ */
++public final class RapierTabList {
++
++    private static final int SLOTS = 80;
++    private static final UUID[] SLOT_IDS = new UUID[SLOTS];
++    private static final List<UUID> SLOT_ID_LIST = new ArrayList<>(SLOTS);
++
++    static {
++        for (int i = 0; i < SLOTS; i++) {
++            SLOT_IDS[i] = new UUID(0x536F6A7554616221L, 0xF00D_0000L + i); // stable, never collides with real profiles
++            SLOT_ID_LIST.add(SLOT_IDS[i]);
++        }
++    }
++
++    private RapierTabList() {}
++
++    public static void setSlots(org.bukkit.entity.Player viewer, List<net.kyori.adventure.text.Component> lines) {
++        ServerPlayer handle = ((org.bukkit.craftbukkit.entity.CraftPlayer) viewer).getHandle();
++
++        // 1) unlist every real player for this viewer (their own client keeps working normally)
++        List<ClientboundPlayerInfoUpdatePacket.Entry> unlist = new ArrayList<>();
++        for (ServerPlayer online : MinecraftServer.getServer().getPlayerList().getPlayers()) {
++            unlist.add(new ClientboundPlayerInfoUpdatePacket.Entry(
++                    online.getUUID(), null, false, 0, GameType.SURVIVAL, null, false, 0, null));
++        }
++        if (!unlist.isEmpty()) {
++            handle.connection.send(new ClientboundPlayerInfoUpdatePacket(
++                    EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED), unlist));
++        }
++
++        // 2) add/update the fixed slots
++        List<ClientboundPlayerInfoUpdatePacket.Entry> entries = new ArrayList<>(SLOTS);
++        for (int i = 0; i < SLOTS; i++) {
++            net.kyori.adventure.text.Component line = i < lines.size() ? lines.get(i) : null;
++            net.minecraft.network.chat.Component display = line != null
++                    ? io.papermc.paper.adventure.PaperAdventure.asVanilla(line)
++                    : net.minecraft.network.chat.Component.empty();
++            GameProfile profile = new GameProfile(SLOT_IDS[i], "!ts" + i);
++            entries.add(new ClientboundPlayerInfoUpdatePacket.Entry(
++                    SLOT_IDS[i], profile, true, 0, GameType.SURVIVAL, display, false, SLOTS - i, null));
++        }
++        handle.connection.send(new ClientboundPlayerInfoUpdatePacket(EnumSet.of(
++                ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER,
++                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED,
++                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LATENCY,
++                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE,
++                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME,
++                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_HAT,
++                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LIST_ORDER), entries));
++    }
++
++    public static void clearSlots(org.bukkit.entity.Player viewer) {
++        ServerPlayer handle = ((org.bukkit.craftbukkit.entity.CraftPlayer) viewer).getHandle();
++
++        // remove the fake slots
++        handle.connection.send(new ClientboundPlayerInfoRemovePacket(SLOT_ID_LIST));
++
++        // re-list every real player
++        List<ClientboundPlayerInfoUpdatePacket.Entry> relist = new ArrayList<>();
++        for (ServerPlayer online : MinecraftServer.getServer().getPlayerList().getPlayers()) {
++            relist.add(new ClientboundPlayerInfoUpdatePacket.Entry(
++                    online.getUUID(), null, true, 0, GameType.SURVIVAL, null, false, 0, null));
++        }
++        if (!relist.isEmpty()) {
++            handle.connection.send(new ClientboundPlayerInfoUpdatePacket(
++                    EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED), relist));
++        }
++    }
++}
