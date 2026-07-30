@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 23:19:30 -0700
+Subject: [PATCH] rapier - 1.8 combat: blockhit swords use the vanilla
+ consumable flow on both sides
+
+routing swords through the custom BLOCKS_ATTACKS branch while the
+client predicts startConsuming desynced the eat state: forceHeldSlot
+resent the held slot every use, the client cancels its consume on
+inventory updates, and the blockhit flickered for a tick in a loop.
+
+the consumable flow is the most battle-tested use path in the game
+and needs none of the stop/start/forceHeldSlot resync fixes (those
+stay in place for BLOCKS_ATTACKS items without CONSUMABLE).
+getItemBlockingWith() only needs isUsingItem + BLOCKS_ATTACKS on the
+use item, so damage reduction, slowdown, and blocker KB all work
+unchanged while consuming.
+
+diff --git a/net/minecraft/world/item/Item.java b/net/minecraft/world/item/Item.java
+index 3bc721a2414db0bf22c4bca03d4773ec6b97ba49..63bdc131c06f81d1075b1d2a6838c42a8c1bd696 100644
+--- a/net/minecraft/world/item/Item.java
++++ b/net/minecraft/world/item/Item.java
+@@ -183,8 +183,12 @@ public class Item implements FeatureElement, ItemLike {
+     public InteractionResult use(Level level, Player player, InteractionHand hand) {
+         ItemStack itemInHand = player.getItemInHand(hand);
+         Consumable consumable = itemInHand.get(DataComponents.CONSUMABLE);
+-        // rapier - 1.8 combat: blockhit swords carry CONSUMABLE purely for the client-side eat pose; the server must keep running the BLOCKS_ATTACKS sword path below
+-        if (consumable != null && !(itemInHand.is(net.minecraft.tags.ItemTags.SWORDS) && itemInHand.has(DataComponents.BLOCKS_ATTACKS))) {
++        // rapier - 1.8 combat: blockhit swords go through the vanilla consumable flow on BOTH sides. the client
++        // predicts startConsuming for any CONSUMABLE item, so the server must mirror it exactly -- routing swords
++        // through the custom BLOCKS_ATTACKS branch below (stop/start/forceHeldSlot) desyncs the client's eat state:
++        // the held-slot resend cancels the client's consume every tick and the blockhit flickers. isBlocking() stays
++        // true while consuming because the sword still carries BLOCKS_ATTACKS, so damage reduction/slowdown/KB all work.
++        if (consumable != null) {
+             return consumable.startConsuming(player, itemInHand, hand);
+         } else {
+             Equippable equippable = itemInHand.get(DataComponents.EQUIPPABLE);
