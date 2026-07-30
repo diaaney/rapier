@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 08:32:48 -0700
+Subject: [PATCH] rapier - tolerate out-of-order keepalives; rod-friction knob
+ stops rod momentum stacking
+
+
+diff --git a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+index b8a4b4cc02a2fc6b70f4b840796eed501aad6239..d13b8721b93f56c0bfc16272a3fd8eb0c383a8f8 100644
+--- a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+@@ -117,17 +117,17 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
+             return;
+         }
+ 
++        // rapier - tolerate out-of-order keepalive responses instead of kicking. Paper sends a keepalive every second, so a single client or host lag spike reorders them and the strict check disconnects a perfectly live player ("sending keepalive response out-of-order"). Accept the late match, treat the older unanswered ones as lost, and keep the 30s hard timeout for genuinely dead connections.
+         for (java.util.Iterator<io.papermc.paper.util.KeepAlive.PendingKeepAlive> itr = this.keepAlive.pendingKeepAlives.iterator(); itr.hasNext();) {
+             io.papermc.paper.util.KeepAlive.PendingKeepAlive ka = itr.next();
+-            if (ka.challengeId() == packet.getId()) {
+-                itr.remove();
+-
+-                if (!this.processedDisconnect) {
+-                    LOGGER.info("Disconnecting {} for sending keepalive response ({}) out-of-order!", this.playerProfile().name(), packet.getId());
+-                    this.disconnectAsync(TIMEOUT_DISCONNECTION_MESSAGE, io.papermc.paper.connection.DisconnectionReason.TIMEOUT);
+-                    return;
+-                }
+-                break;
++            boolean rapierMatch = ka.challengeId() == packet.getId();
++            itr.remove(); // skipped entries ahead of the match were lost or reordered; drop them so the oldest-pending timeout doesn't fire on them
++            if (rapierMatch) {
++                io.papermc.paper.util.KeepAlive.KeepAliveResponse rapierResponse = new io.papermc.paper.util.KeepAlive.KeepAliveResponse(ka.txTimeNS(), now);
++                this.keepAlive.pingCalculator1m.update(rapierResponse);
++                this.keepAlive.pingCalculator5s.update(rapierResponse);
++                this.latency = this.keepAlive.pingCalculator5s.getAvgLatencyMS();
++                return;
+             }
+         }
+ 
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 688646aa8101fa295cdbfe61bfa5ff45d8866d1f..987602706edb67fb0bd144c6480ccb666cbe902c 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -41,6 +41,7 @@ public final class RapierConfig {
+         DEFAULTS.put("rod-gravity", 0.04);             // bobber gravity per tick out of water (1.8: 0.04)
+         DEFAULTS.put("rod-hitbox", 0.3);               // hit detection inflation around targets (1.8: 0.3; modern shrank it to 0 which drops legit rod hits)
+         DEFAULTS.put("rod-air-scale", 1.0);            // multiplier on rod knockback when the target is airborne (1.0 = authentic; lower to soften mid-jump rod shots)
++        DEFAULTS.put("rod-friction", 0.3);             // victim momentum kept through a rod hit (1.8: 0.5). low default so back-to-back rod shots don't compound into a launch
+     }
+ 
+     private static final ConcurrentHashMap<String, Double> VALUES = new ConcurrentHashMap<>();
+@@ -137,6 +138,7 @@ public final class RapierConfig {
+     public static double rodGravity()             { return get("rod-gravity"); }
+     public static double rodHitbox()              { return get("rod-hitbox"); }
+     public static double rodAirScale()            { return get("rod-air-scale"); }
++    public static double rodFriction()            { return get("rod-friction"); }
+ 
+     private static void ensureLoaded() {
+         if (!loaded) load();
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 4bcf1424e4db29247de7cfdea9abb0a4df57435d..9b3f8a0915719aefa3d9e6cc5ceed4957c1a9e64 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -308,14 +308,27 @@ public class FishingHook extends Projectile {
+                 rapierHitLiving.hurtTime = 10;
+                 rapierHitLiving.hurtDuration = 10;
+                 rapierHitLiving.hurtMarked = true;
+-                // rapier - 1.8 combat: the bobber hit knocks the target back. 1.8's attackEntityFrom(causeThrownDamage, 0.0F) rode the hurt path which always applied knockBack(0.4) away from the angler; our manual hit pipeline skipped it, leaving rod hits with animation+sound but no push. rod-knockback in /kb scales it, rod-air-scale softens it for airborne targets.
++                // rapier - 1.8 combat: the bobber hit knocks the target back. 1.8's attackEntityFrom(causeThrownDamage, 0.0F) rode the hurt path which always applied knockBack(0.4) away from the angler; our manual hit pipeline skipped it, leaving rod hits with animation+sound but no push. rod-knockback scales it, rod-air-scale softens airborne targets, and rod-friction (instead of the global knockback-friction) controls how much victim momentum survives so back-to-back rod shots don't compound into a launch.
+                 double rapierRodAir = rapierHitLiving.onGround() ? 1.0 : net.minecraft.server.rapier.RapierConfig.rodAirScale();
+-                rapierHitLiving.knockback(
+-                    0.4F * net.minecraft.server.rapier.RapierConfig.rodKnockback() * rapierRodAir,
+-                    rapierOwner.getX() - rapierHitLiving.getX(),
+-                    rapierOwner.getZ() - rapierHitLiving.getZ(),
+-                    this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK
+-                );
++                double rapierRodStrength = 0.4 * net.minecraft.server.rapier.RapierConfig.rodKnockback() * net.minecraft.server.rapier.RapierConfig.knockbackScale() * rapierRodAir;
++                rapierRodStrength *= 1.0 - rapierHitLiving.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
++                if (rapierRodStrength > 0.0) {
++                    double rapierDx = rapierOwner.getX() - rapierHitLiving.getX();
++                    double rapierDz = rapierOwner.getZ() - rapierHitLiving.getZ();
++                    while (rapierDx * rapierDx + rapierDz * rapierDz < 1.0E-5) {
++                        rapierDx = (this.random.nextDouble() - this.random.nextDouble()) * 0.01;
++                        rapierDz = (this.random.nextDouble() - this.random.nextDouble()) * 0.01;
++                    }
++                    net.minecraft.world.phys.Vec3 rapierPush = new net.minecraft.world.phys.Vec3(rapierDx, 0.0, rapierDz).normalize()
++                        .scale(rapierRodStrength * net.minecraft.server.rapier.RapierConfig.knockbackHorizontal());
++                    double rapierRodFriction = net.minecraft.server.rapier.RapierConfig.rodFriction();
++                    net.minecraft.world.phys.Vec3 rapierDm = rapierHitLiving.getDeltaMovement();
++                    rapierHitLiving.setDeltaMovement(
++                        rapierDm.x * rapierRodFriction - rapierPush.x,
++                        Math.min(net.minecraft.server.rapier.RapierConfig.knockbackVerticalLimit(), rapierDm.y * rapierRodFriction + rapierRodStrength * net.minecraft.server.rapier.RapierConfig.knockbackVertical()),
++                        rapierDm.z * rapierRodFriction - rapierPush.z
++                    );
++                }
+                 // rapier - extra rod-only vertical kick on top of the base knockback (rod-vertical in /kb, default 0 = pure 1.8)
+                 double rapierRodVertical = net.minecraft.server.rapier.RapierConfig.rodVertical() * rapierRodAir;
+                 if (rapierRodVertical != 0.0) {
