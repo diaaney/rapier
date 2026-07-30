@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 21:27:59 -0700
+Subject: [PATCH] rapier - 1.8 combat: allow crits while sprinting
+
+1.9 added !isSprinting() to the player crit condition. 1.8.9's crit
+check (fallDistance > 0, airborne, not on ladder, not in water, no
+blindness, not riding) never tested sprint state, so sprint + falling
+always crit. removing the gate restores sprint-crits and with it the
+1.8 W-tap crit combo game.
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index aaa6f0954ca09766c73a1e4957333f0daa89f713..32d809d7fdf1d3a12f2ee9ba65b03d2728013c29 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1128,8 +1128,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+             && !this.isInWater()
+             && !this.isMobilityRestricted()
+             && !this.isPassenger()
+-            && target instanceof LivingEntity
+-            && !this.isSprinting();
++            && target instanceof LivingEntity; // rapier - 1.8 combat: sprint crits. the !isSprinting() gate was added in 1.9; 1.8.9's crit check (EntityPlayer.attackTargetEntityWithCurrentItem) never tested sprint state, so sprint + falling = crit
+     }
+ 
+     private boolean isSweepAttack(boolean isStrong, boolean isCritical, boolean extraKnockback) {
