@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 09:51:07 -0700
+Subject: [PATCH] rapier - knockback-look-weight: blend kb direction toward the
+ attacker's aim
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 992c92f12c2daf5a3407aecd0ae260980da5d5c2..70d54dc0fceca54ec2320b25297bcd78a79404ca 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -32,6 +32,7 @@ public final class RapierConfig {
+         DEFAULTS.put("knockback-vertical", 1.0);       // vertical-only multiplier on base knockback kick
+         DEFAULTS.put("knockback-vertical-limit", 0.4); // cap on upward velocity from a hit (1.8: 0.4)
+         DEFAULTS.put("knockback-friction", 0.5);       // how much of the victim's own momentum survives a hit (1.8: 0.5 = the motion/2). lower = hits stop runners harder
++        DEFAULTS.put("knockback-look-weight", 0.0);    // blends the kb direction toward where the ATTACKER is looking (0 = pure 1.8 positional, 1 = fully aim-driven)
+         DEFAULTS.put("sprint-horizontal", 1.0);        // multiplier on the sprint/KB-enchant extra horizontal push
+         DEFAULTS.put("sprint-vertical", 0.1);          // flat vertical add of the sprint/KB-enchant extra (1.8: 0.1)
+         DEFAULTS.put("attack-momentum-scale", 0.6);    // attacker X/Z damping after a sprint/KB hit (1.8: 0.6)
+@@ -130,6 +131,7 @@ public final class RapierConfig {
+     public static double knockbackVertical()      { return get("knockback-vertical"); }
+     public static double knockbackVerticalLimit() { return get("knockback-vertical-limit"); }
+     public static double knockbackFriction()      { return get("knockback-friction"); }
++    public static double knockbackLookWeight()    { return get("knockback-look-weight"); }
+     public static double sprintHorizontal()       { return get("sprint-horizontal"); }
+     public static double sprintVertical()         { return get("sprint-vertical"); }
+     public static double attackMomentumScale()    { return get("attack-momentum-scale"); }
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index d5c47a6812128e6544723a131586c94ec9298d2b..7ce630692f2b8e9fd448590ef7968d68d7d4f2e1 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2129,6 +2129,20 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 z = (this.random.nextDouble() - this.random.nextDouble()) * 0.01;
+             }
+ 
++            // rapier - knockback-look-weight: blend the positional direction toward the attacker's aim, so where the ATTACKER hits from matters more than where the victim drifts. 0 = authentic 1.8 positional.
++            double rapierLookWeight = net.minecraft.server.rapier.RapierConfig.knockbackLookWeight();
++            if (rapierLookWeight > 0.0 && attacker != null) {
++                float rapierLookYaw = attacker.getYRot() * (float) (Math.PI / 180.0);
++                double rapierPosLen = Math.sqrt(x * x + z * z);
++                double rapierW = Math.min(1.0, rapierLookWeight);
++                x = (x / rapierPosLen) * (1.0 - rapierW) + Mth.sin(rapierLookYaw) * rapierW;
++                z = (z / rapierPosLen) * (1.0 - rapierW) + -Mth.cos(rapierLookYaw) * rapierW;
++                if (x * x + z * z < 1.0E-5) { // opposing blend cancelled out; fall back to pure aim
++                    x = Mth.sin(rapierLookYaw);
++                    z = -Mth.cos(rapierLookYaw);
++                }
++            }
++
+             Vec3 vec3 = new Vec3(x, 0.0, z).normalize().scale(strength * net.minecraft.server.rapier.RapierConfig.knockbackHorizontal()); // rapier - horizontal-only tuning knob on top of knockback-scale
+             double rapierFriction = net.minecraft.server.rapier.RapierConfig.knockbackFriction(); // rapier - momentum kept through a hit (1.8: 0.5, the motion/2). live-tunable via /kb; lower stops runners harder
+             // Paper start - knockback events
