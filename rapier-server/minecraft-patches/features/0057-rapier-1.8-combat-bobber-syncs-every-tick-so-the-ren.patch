@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 10:44:16 -0700
+Subject: [PATCH] rapier - 1.8 combat: bobber syncs every tick so the rendered
+ bobber matches the server's 1.8 flight path
+
+
+diff --git a/net/minecraft/world/entity/EntityType.java b/net/minecraft/world/entity/EntityType.java
+index abccad13c2bb3a33e98ad8eb6d7f08c0ef021811..f8221008ebf0aacbbdb41d9d894f7356b47dcb07 100644
+--- a/net/minecraft/world/entity/EntityType.java
++++ b/net/minecraft/world/entity/EntityType.java
+@@ -1208,7 +1208,7 @@ public class EntityType<T extends Entity> implements FeatureElement, EntityTypeT
+             .noSummon()
+             .sized(0.25F, 0.25F)
+             .clientTrackingRange(4)
+-            .updateInterval(5)
++            .updateInterval(1) // rapier - 1.8 combat: sync the bobber every tick. the client simulates it with VANILLA physics (0.03 gravity, ~1.1 cast) between updates while the rapier bobber flies 1.8 physics (0.04, 1.5), so 5-tick syncs leave the rendered bobber blocks away from the real one and rod hits register "late"/where you don't see them
+     );
+     private static final Set<EntityType<?>> OP_ONLY_CUSTOM_DATA = Set.of(FALLING_BLOCK, COMMAND_BLOCK_MINECART, SPAWNER_MINECART);
+     private final EntityType.EntityFactory<T> factory;
