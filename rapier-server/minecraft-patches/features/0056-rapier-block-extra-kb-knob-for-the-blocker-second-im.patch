@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 10:12:39 -0700
+Subject: [PATCH] rapier - block-extra-kb knob for the blocker second impulse,
+ with debug-kb visibility
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 70d54dc0fceca54ec2320b25297bcd78a79404ca..9d98f132c8ac95b7871a3bbe03aaa516876990f8 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -33,6 +33,7 @@ public final class RapierConfig {
+         DEFAULTS.put("knockback-vertical-limit", 0.4); // cap on upward velocity from a hit (1.8: 0.4)
+         DEFAULTS.put("knockback-friction", 0.5);       // how much of the victim's own momentum survives a hit (1.8: 0.5 = the motion/2). lower = hits stop runners harder
+         DEFAULTS.put("knockback-look-weight", 0.0);    // blends the kb direction toward where the ATTACKER is looking (0 = pure 1.8 positional, 1 = fully aim-driven)
++        DEFAULTS.put("block-extra-kb", 1.0);           // scale of the blocker's second horizontal impulse (the patch-0030 re-apply). 0 = off, blocked hits take only the normal knockback
+         DEFAULTS.put("sprint-horizontal", 1.0);        // multiplier on the sprint/KB-enchant extra horizontal push
+         DEFAULTS.put("sprint-vertical", 0.1);          // flat vertical add of the sprint/KB-enchant extra (1.8: 0.1)
+         DEFAULTS.put("attack-momentum-scale", 0.6);    // attacker X/Z damping after a sprint/KB hit (1.8: 0.6)
+@@ -132,6 +133,7 @@ public final class RapierConfig {
+     public static double knockbackVerticalLimit() { return get("knockback-vertical-limit"); }
+     public static double knockbackFriction()      { return get("knockback-friction"); }
+     public static double knockbackLookWeight()    { return get("knockback-look-weight"); }
++    public static double blockExtraKb()           { return get("block-extra-kb"); }
+     public static double sprintHorizontal()       { return get("sprint-horizontal"); }
+     public static double sprintVertical()         { return get("sprint-vertical"); }
+     public static double attackMomentumScale()    { return get("attack-momentum-scale"); }
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 7ce630692f2b8e9fd448590ef7968d68d7d4f2e1..7565afbe3563080fde127718a9875607b25e60e2 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1551,11 +1551,13 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                     // rapier - 1.8 combat: blockers sometimes render with only vertical KB visible because the client damps horizontal velocity for a using-item player. re-apply the horizontal component directly to deltaMovement and re-mark so a second motion packet lands on top. authentic 1.8 blockers took identical KB magnitude to non-blockers.
+                     if (flag && f1 < originAmount && this.isBlocking()) {
+                         double rapierBlockKbMag = Math.sqrt(d * d + d1 * d1);
+-                        if (rapierBlockKbMag > 1.0E-5) {
+-                            double rapierBlockKbStrength = 0.4 * net.minecraft.server.rapier.RapierConfig.knockbackScale() * net.minecraft.server.rapier.RapierConfig.knockbackHorizontal(); // rapier - blocker impulse honors knockback-scale and the horizontal knob like every other knockback path
++                        double rapierBlockExtra = net.minecraft.server.rapier.RapierConfig.blockExtraKb(); // rapier - live-tunable: with high knockback-horizontal this second impulse nearly doubles blocked-hit kb ("shield bounce" feel); 0 turns it off
++                        if (rapierBlockKbMag > 1.0E-5 && rapierBlockExtra > 0.0) {
++                            double rapierBlockKbStrength = 0.4 * net.minecraft.server.rapier.RapierConfig.knockbackScale() * net.minecraft.server.rapier.RapierConfig.knockbackHorizontal() * rapierBlockExtra; // rapier - blocker impulse honors knockback-scale and the horizontal knob like every other knockback path
+                             net.minecraft.world.phys.Vec3 rapierBlockDelta = this.getDeltaMovement();
+                             this.setDeltaMovement(rapierBlockDelta.x - (d / rapierBlockKbMag) * rapierBlockKbStrength, rapierBlockDelta.y, rapierBlockDelta.z - (d1 / rapierBlockKbMag) * rapierBlockKbStrength);
+                             this.hurtMarked = true;
++                            net.minecraft.server.rapier.RapierConfig.debug("BLOCK-EXTRA victim=" + this.getName().getString() + " strength=" + rapierBlockKbStrength + " vAfter=(" + this.getDeltaMovement().x + ", " + this.getDeltaMovement().z + ")"); // rapier - debug-kb
+                         }
+                     }
+                     if (!flag) {
