@@ -1,0 +1,132 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 09:33:31 -0700
+Subject: [PATCH] rapier - debug-kb toggle: combat forensics logging (hits,
+ knockback, sprint extra, rod, collision pushes)
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 987602706edb67fb0bd144c6480ccb666cbe902c..992c92f12c2daf5a3407aecd0ae260980da5d5c2 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -42,6 +42,7 @@ public final class RapierConfig {
+         DEFAULTS.put("rod-hitbox", 0.3);               // hit detection inflation around targets (1.8: 0.3; modern shrank it to 0 which drops legit rod hits)
+         DEFAULTS.put("rod-air-scale", 1.0);            // multiplier on rod knockback when the target is airborne (1.0 = authentic; lower to soften mid-jump rod shots)
+         DEFAULTS.put("rod-friction", 0.3);             // victim momentum kept through a rod hit (1.8: 0.5). low default so back-to-back rod shots don't compound into a launch
++        DEFAULTS.put("debug-kb", 0.0);                 // 1 = log every hit/knockback application to console (combat forensics; noisy, leave off)
+     }
+ 
+     private static final ConcurrentHashMap<String, Double> VALUES = new ConcurrentHashMap<>();
+@@ -140,6 +141,13 @@ public final class RapierConfig {
+     public static double rodAirScale()            { return get("rod-air-scale"); }
+     public static double rodFriction()            { return get("rod-friction"); }
+ 
++    public static boolean debugKb()               { return get("debug-kb") != 0.0; }
++
++    /** combat forensics channel for the debug-kb toggle */
++    public static void debug(String message) {
++        if (debugKb()) LOGGER.info("[kb] {}", message);
++    }
++
+     private static void ensureLoaded() {
+         if (!loaded) load();
+     }
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 3bf618f1d756bad7755a87803132bd731e7c41be..a027bead0505ec83b81aa7e2e9f748b5f2d1f901 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -2308,6 +2308,10 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+                     d1 *= d2;
+                     d *= 0.05F;
+                     d1 *= 0.05F;
++                    // rapier - debug-kb: body-collision shoves are the usual suspect behind "got pushed but no hit registered"
++                    if (this instanceof net.minecraft.world.entity.player.Player && entity instanceof net.minecraft.world.entity.player.Player && net.minecraft.server.rapier.RapierConfig.debugKb()) {
++                        net.minecraft.server.rapier.RapierConfig.debug(String.format("COLLISION-PUSH %s <-> %s push=(%.3f, %.3f)", this.getName().getString(), entity.getName().getString(), d, d1));
++                    }
+                     if (!this.isVehicle() && this.isPushable()) {
+                         this.push(-d, 0.0, -d1);
+                     }
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 2757a70f191bad8ecac28982589e3c6dbc39ef89..06ed8ac62d662116546be82f969a533ddb76afae 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1465,8 +1465,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             boolean flag1 = true;
+             if (this.invulnerableTime > (float) this.invulnerableDuration / 2.0F && !damageSource.is(DamageTypeTags.BYPASSES_COOLDOWN)) { // CraftBukkit - restore use of maxNoDamageTicks
+                 if (amount <= this.lastHurt) {
++                    net.minecraft.server.rapier.RapierConfig.debug("SWALLOWED victim=" + this.getName().getString() + " amount=" + amount + " <= lastHurt=" + this.lastHurt + " invuln=" + this.invulnerableTime); // rapier - debug-kb
+                     return false;
+                 }
++                net.minecraft.server.rapier.RapierConfig.debug("PARTIAL victim=" + this.getName().getString() + " amount=" + amount + " lastHurt=" + this.lastHurt + " invuln=" + this.invulnerableTime + " (damage only, no kb)"); // rapier - debug-kb
+ 
+                 // Paper start - only call damage event when actuallyHurt will be called - move call logic down
+                 event = this.handleEntityDamage(damageSource, amount, this.lastHurt); // Paper - fix invulnerability reduction in EntityDamageEvent - pass lastDamage reduction
+@@ -1495,6 +1497,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 this.invulnerableTime = this.invulnerableDuration; // CraftBukkit - restore use of maxNoDamageTicks
+                 // this.actuallyHurt(level, damageSource, amount);
+                 // CraftBukkit end
++                net.minecraft.server.rapier.RapierConfig.debug("FRESH victim=" + this.getName().getString() + " amount=" + amount + " src=" + damageSource.getMsgId() + " (full hit: damage+flash+kb)"); // rapier - debug-kb
+                 this.hurtDuration = 10;
+                 this.hurtTime = this.hurtDuration;
+                 // rapier - 1.8 combat: taking damage cancels sprint (enables W-tap combat technique)
+@@ -2111,7 +2114,8 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             Vec3 deltaMovement = this.getDeltaMovement();
+ 
+             // rapier - overlapping bodies (running through each other) leave the knockback direction degenerate; vanilla picks a RANDOM direction which can launch the victim along their own sprint heading ("the hit pushed me forward"). Push along the attacker's facing instead; random stays as the last-resort fallback when there is no attacker.
+-            if (x * x + z * z < 1.0E-5F && attacker != null) {
++            boolean rapierDegenerate = x * x + z * z < 1.0E-5F; // rapier - debug-kb
++            if (rapierDegenerate && attacker != null) {
+                 float rapierYaw = attacker.getYRot() * (float) (Math.PI / 180.0);
+                 x = Mth.sin(rapierYaw);
+                 z = -Mth.cos(rapierYaw);
+@@ -2139,6 +2143,11 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                     finalVelocity = new Vec3(finalVelocity.x - rapierAlong * rapierUx, finalVelocity.y, finalVelocity.z - rapierAlong * rapierUz);
+                 }
+             }
++            if (net.minecraft.server.rapier.RapierConfig.debugKb()) { // rapier - debug-kb
++                net.minecraft.server.rapier.RapierConfig.debug(String.format("KNOCKBACK victim=%s attacker=%s strength=%.3f degenerate=%b dmBefore=(%.3f, %.3f) final=(%.3f, %.3f) cause=%s",
++                    this.getName().getString(), attacker != null ? attacker.getName().getString() : "null", strength, rapierDegenerate,
++                    deltaMovement.x, deltaMovement.z, finalVelocity.x, finalVelocity.z, eventCause));
++            }
+             Vec3 diff = finalVelocity.subtract(deltaMovement);
+             io.papermc.paper.event.entity.EntityKnockbackEvent event = CraftEventFactory.callEntityKnockbackEvent((org.bukkit.craftbukkit.entity.CraftLivingEntity) this.getBukkitEntity(), attacker, attacker, eventCause, strength, diff);
+             // Paper end - knockback events
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 6d78412a36f3fe8d0ab61e8687774dabc4b7e59f..b711267c9f3ea0b68473ee0de81cd90ba99d77ce 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1224,6 +1224,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+             double rapierRelX = target.getX() - this.getX();
+             double rapierRelZ = target.getZ() - this.getZ();
+             double rapierRelLen = Math.sqrt(rapierRelX * rapierRelX + rapierRelZ * rapierRelZ);
++            boolean rapierClamped = false;
+             if (rapierRelLen > 1.0E-3) {
+                 double rapierUx = rapierRelX / rapierRelLen;
+                 double rapierUz = rapierRelZ / rapierRelLen;
+@@ -1231,8 +1232,14 @@ public abstract class Player extends Avatar implements ContainerUser {
+                 double rapierAlong = rapierTv.x * rapierUx + rapierTv.z * rapierUz;
+                 if (rapierAlong < 0.0) {
+                     target.setDeltaMovement(rapierTv.x - rapierAlong * rapierUx, rapierTv.y, rapierTv.z - rapierAlong * rapierUz);
++                    rapierClamped = true;
+                 }
+             }
++            if (net.minecraft.server.rapier.RapierConfig.debugKb()) { // rapier - debug-kb
++                net.minecraft.server.rapier.RapierConfig.debug(String.format("SPRINT-EXTRA attacker=%s target=%s strength=%.3f yaw=%.1f dist=%.2f clamped=%b vAfter=(%.3f, %.3f)",
++                    this.getName().getString(), target.getName().getString(), strength, this.getYRot(), rapierRelLen, rapierClamped,
++                    target.getDeltaMovement().x, target.getDeltaMovement().z));
++            }
+             target.hurtMarked = true;
+             // rapier end
+ 
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 6eb6ec7d77568dc8a36807af8cb02a99309a447d..de9e9130f8d56d4c53d0c06d795a61917f475200 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -304,6 +304,7 @@ public class FishingHook extends Projectile {
+                 && !(rapierHitLiving instanceof Player rapierHitPlayer && (rapierHitPlayer.getAbilities().invulnerable || rapierHitPlayer.isSpectator()))
+                 // rapier - 1.8 hit cooldown: a contact inside the first half of the invuln window does not register (authentic attackEntityFrom gate, hurtResistantTime > maxHurtResistantTime/2), so rod spam can't machine-gun knockback
+                 && rapierHitLiving.invulnerableTime <= rapierHitLiving.invulnerableDuration / 2) {
++                net.minecraft.server.rapier.RapierConfig.debug("ROD-HIT angler=" + rapierOwner.getName().getString() + " victim=" + rapierHitLiving.getName().getString() + " victimOnGround=" + rapierHitLiving.onGround()); // rapier - debug-kb
+                 rapierHitLiving.invulnerableTime = rapierHitLiving.invulnerableDuration;
+                 rapierHitLiving.lastHurt = 0.0F; // rapier - 1.8: the 0-damage thrown attack set lastDamage=0, so the follow-up sword hit inside the invuln window deals its FULL damage. without this the stale lastHurt swallows the rod+sword combo ("kb but no hit").
+                 rapierHitLiving.hurtTime = 10;
