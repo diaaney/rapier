@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 09:41:55 -0700
+Subject: [PATCH] rapier - 1.8 combat: kill the reversed shield-block bounce on
+ blockers; blockhit plays the hurt sound
+
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 06ed8ac62d662116546be82f969a533ddb76afae..d5c47a6812128e6544723a131586c94ec9298d2b 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1513,6 +1513,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                     // rapier - 1.8 combat: a partial block should still flash the target's hurt animation client-side. onBlocked plays the block sound; without the damage event broadcast the client never tints the model, so user sees sound+small kb but no "I hit them" feedback.
+                     if (f1 < originAmount) {
+                         level.broadcastDamageEvent(this, damageSource);
++                        // rapier - 1.8 combat: a blockhit still made the normal hurt sound in 1.8 (the shield thunk alone reads as "the hit didn't register")
++                        level.playSound(null, this.getX(), this.getY(), this.getZ(),
++                            this instanceof net.minecraft.world.entity.player.Player ? net.minecraft.sounds.SoundEvents.PLAYER_HURT : net.minecraft.sounds.SoundEvents.GENERIC_HURT,
++                            this.getSoundSource(), 1.0F, (this.random.nextFloat() - this.random.nextFloat()) * 0.2F + 1.0F);
+                     }
+                 } else {
+                     level.broadcastDamageEvent(this, damageSource);
+@@ -1747,7 +1751,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     }
+ 
+     protected void blockedByItem(LivingEntity entity) {
+-        entity.knockback(0.5, entity.getX() - this.getX(), entity.getZ() - this.getZ(), this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.SHIELD_BLOCK); // CraftBukkit // Paper - fix attacker & knockback events
++        // rapier - 1.8 combat: no shield-block bounce. modern applies an EXTRA 0.5 knockback on block whose direction vector is built backwards for this call path, yanking the sword-blocker TOWARD the attacker harder than the hit itself pushes away (debug-kb showed SHIELD_BLOCK and ENTITY_ATTACK firing opposite directions in the same tick). 1.8 blockers took exactly one normal knockback.
+     }
+ 
+     private boolean checkTotemDeathProtection(DamageSource damageSource) {
