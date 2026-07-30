@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 05:13:09 -0700
+Subject: [PATCH] rapier - api: tab slot heads use mc dark gray (0x555555)
+ texture
+
+
+diff --git a/net/minecraft/server/rapier/RapierTabList.java b/net/minecraft/server/rapier/RapierTabList.java
+index 7f5ff3a122d340cdb14dcfa56998595702f0830f..ff3273395e6c661d3f1bb9d0534da4efbc6a1d24 100644
+--- a/net/minecraft/server/rapier/RapierTabList.java
++++ b/net/minecraft/server/rapier/RapierTabList.java
+@@ -40,11 +40,11 @@ public final class RapierTabList {
+         }
+     }
+ 
+-    /** mineskin-signed 64x64 flat dark skin so slot heads render as a subtle dark square */
++    /** mineskin-signed 64x64 flat mc dark-gray (0x555555) skin so slot heads render as subtle gray squares */
+     private static final com.mojang.authlib.properties.Property DARK_TEXTURE = new com.mojang.authlib.properties.Property(
+             "textures",
+-            "ewogICJ0aW1lc3RhbXAiIDogMTc4NTQxMDk2MTI2MSwKICAicHJvZmlsZUlkIiA6ICI4MTFkNjM0NzUwY2Y0ZDI0OTJmZDcxYTViZjZhZjI3MSIsCiAgInByb2ZpbGVOYW1lIiA6ICJzcGlmZnRvcGlhMSIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS85MzgzNjkyMDkyZGRmOTdhMzFjY2NiMTkzYmY1YzZkMmQwOWY0NWI4Yzk2YjdkYWI5Zjc5ZDllYWRhMjAwYjEwIgogICAgfQogIH0KfQ==",
+-            "xlyvBGxbH1tcw+iQClIkE0UAio6p/72knIFUvLTDabdL4f931qFdhaq3RF27R0DoEjkxFXRc8BfrMPt/+q2/ldI4j0PzUmLgN6yCCc4+31sbjf/964/uLQG45Kavcj+OG0EUjUJLaJW/NTDodYuCEEKHUBfFQPXAwqq0tyHz5MXgAsWfN9Cr74LHhBaa0P42KUHXBuXMGnHzd5yZYdgTBxiJNzU4Gk1FhU/DobAB42qcEza8qKm7FPy9q86WDNOAY+iq0M25H9Kf5Qw9wSgtvgX4GLPmeuvBs1siSBekm7X8TWst49eG8trwrpaWqSHXQgRZsdGZvBobGcQ6DoE27vc7WikgkJ+Wo+1sYOV+Vl3YRKXrzaGRHnVX5DWureX0c6TjhPWVoIYiziDojNAtHUFbsZcckk+Uz2jJY2AHiTm0laGnIoH4WAuW19UMBMIsrb39/7cMthXSNjkj7rCKKR9rz/Tbuqwsoe879g+QzpJpU5Dtib+NjHjmm/BpcRJMmHxP2GVYrLzUVRcdR/ItTPSyrGE2o0FgBPOdBufJNbfKuHOsQ6Et1moJBGMl2zq5o+dnyTwmMy+hzQSx3EPogthB44iG4BZCehlz/dBlt1T02fJlTvINfPkq+IOOeyosmZm629itENJ3Ao5+qKq+bss2cKmoipQ/FAOX2P7pWU8=");
++            "ewogICJ0aW1lc3RhbXAiIDogMTYyMTcwNTk1MDY4MCwKICAicHJvZmlsZUlkIiA6ICJjZGM5MzQ0NDAzODM0ZDdkYmRmOWUyMmVjZmM5MzBiZiIsCiAgInByb2ZpbGVOYW1lIiA6ICJSYXdMb2JzdGVycyIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS80ZDk5NDhkODUyNWQyNzU4YWY1YzFiNmJhMzIyZmZiMzgzM2Q5Nzk3NDUwMGQ0YTZhYTliZjkxODU4MjNlOGVjIgogICAgfQogIH0KfQ==",
++            "IoKU9gDR+OW5f4AKhJyU6v16kCr4Efu0+s4SRAUaFtcccSKVxjg8TKW35MbOFkOsEagzXgiRcxDFV3E5k7GEaSqVl/YxiWkJ3oxts+hcz5zKsLyOfb6uvefSfAkCLPdQOGS/XYU2jZCLsmxynUG33B7suf/uEsRobNoKbdYDAvqDiKYMkmLK8qJTMoQgQJqRTf31wJShTNLFcFkTr/NdfsPQQhRl9Ayf8VtbClEVEpxZRtgO2LwJtrIgRQezS6Ie4GHD5hBpgLe678UQHvcSnMZqurI0QU4afH4J4Frmv0LW9DTF3KaxEsHf5eQLNelUZ+ywY81Xjb8JBAf+HdmRuVRGd5Gjt13OYecItODhLcWsmh0f9PJZR7EwFdk/nBeCkAwgGXg9SgIt+S8GGbDfQqvrgBCHWvl/iGjSl2wIPRyUpjDHJ3p4+k5HMqTRVA6JY6rNutj+tpEGuVh2hvRLgzXdsEs67diJ3Bvdxi2mam3dtCR/BIxzG5lg8P1S5tiIIEnuiynjwPmprylSjU61L0BZj+o0xlIT3jEqLGZUlZq/8vZuydLDGSLO0Ims78HwlYo08n18lfSeMG7zpN3RSv7VkAf5mGus+IPeInzWFkZ6XDI0fzaYDeHj12o6AxmQxB9U6uCjVi/JAYffAByFc8+oD1+tBCjpfV257efV4Wk=");
+ 
+     /** shared read-only property map with the dark texture for every slot profile */
+     private static final com.mojang.authlib.properties.PropertyMap DARK_PROPS = new com.mojang.authlib.properties.PropertyMap(
