@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 04:52:34 -0700
+Subject: [PATCH] rapier - api: tab slots honor the exact entry count for
+ shorter layouts
+
+the client derives rows/columns from the total entry count (fewest
+columns with rows <= 20), so senders can shrink the tab height by
+sending fewer entries. dropped the round-up-to-20 padding; the
+assemble helper on the plugin side now picks the minimum row count
+per column count (3 columns = 14 rows minimum).
+
+diff --git a/net/minecraft/server/rapier/RapierTabList.java b/net/minecraft/server/rapier/RapierTabList.java
+index 6addf1862da13b2fdfda14454c21336a09006d8f..7f5ff3a122d340cdb14dcfa56998595702f0830f 100644
+--- a/net/minecraft/server/rapier/RapierTabList.java
++++ b/net/minecraft/server/rapier/RapierTabList.java
+@@ -66,10 +66,10 @@ public final class RapierTabList {
+                     EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED), unlist));
+         }
+ 
+-        // 2) add/update the fixed slots. Sending only as many columns as have content
+-        // (rounded up to full 20-row columns) lets the client draw 3 columns when the
+-        // 4th is unused instead of a trailing empty one.
+-        int count = Math.min(SLOTS, Math.max(20, ((lines.size() + 19) / 20) * 20));
++        // 2) add/update the fixed slots. The caller controls the exact entry count:
++        // the client derives rows/columns from it (fewest columns with rows <= 20),
++        // so fewer entries = a shorter tab.
++        int count = Math.min(SLOTS, Math.max(1, lines.size()));
+         List<ClientboundPlayerInfoUpdatePacket.Entry> entries = new ArrayList<>(count);
+         for (int i = 0; i < count; i++) {
+             net.kyori.adventure.text.Component line = i < lines.size() ? lines.get(i) : null;
