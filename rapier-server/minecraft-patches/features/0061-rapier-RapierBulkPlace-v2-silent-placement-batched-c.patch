@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 14:09:51 -0700
+Subject: [PATCH] rapier - RapierBulkPlace v2: silent placement + batched
+ client flush
+
+
+diff --git a/net/minecraft/server/rapier/RapierBulkPlace.java b/net/minecraft/server/rapier/RapierBulkPlace.java
+index 4b786bad6de8bd173dc6c69d616ef1eb120b7fea..35f1dca5b97949ee15cf2647eca8fc7e81e5c947 100644
+--- a/net/minecraft/server/rapier/RapierBulkPlace.java
++++ b/net/minecraft/server/rapier/RapierBulkPlace.java
+@@ -33,13 +33,21 @@ public final class RapierBulkPlace {
+ 
+     private RapierBulkPlace() {}
+ 
++    /** per-world sections written but not yet announced to clients (main thread only) */
++    private static final java.util.Map<java.util.UUID, Long2ObjectOpenHashMap<ShortSet>> PENDING = new java.util.HashMap<>();
++
+     /**
+      * @param coords x,y,z triplets; {@code count} entries are read
+      * @param blocks parallel array of bukkit BlockData (one per entry)
++     * @param notify true = tell clients now; false = accumulate for {@link #flush}
++     *               (batching client updates every few ticks slashes their chunk
++     *               re-mesh load, which is where animated builds stutter)
+      */
+-    public static void place(org.bukkit.World world, int[] coords, int count, org.bukkit.block.data.BlockData[] blocks) {
++    public static void place(org.bukkit.World world, int[] coords, int count, org.bukkit.block.data.BlockData[] blocks, boolean notify) {
+         ServerLevel level = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
+-        Long2ObjectOpenHashMap<ShortSet> touched = new Long2ObjectOpenHashMap<>();
++        Long2ObjectOpenHashMap<ShortSet> touched = notify
++                ? new Long2ObjectOpenHashMap<>()
++                : PENDING.computeIfAbsent(world.getUID(), k -> new Long2ObjectOpenHashMap<>());
+ 
+         for (int i = 0; i < count; i++) {
+             int x = coords[i * 3], y = coords[i * 3 + 1], z = coords[i * 3 + 2];
+@@ -63,7 +71,18 @@ public final class RapierBulkPlace {
+                    .add(SectionPos.sectionRelativePos(new BlockPos(x, y, z)));
+         }
+ 
+-        // one packet per touched section, only to the players actually tracking that chunk
++        if (notify) send(level, touched);
++    }
++
++    /** announces everything accumulated by non-notifying {@link #place} calls */
++    public static void flush(org.bukkit.World world) {
++        Long2ObjectOpenHashMap<ShortSet> touched = PENDING.remove(world.getUID());
++        if (touched == null || touched.isEmpty()) return;
++        send(((org.bukkit.craftbukkit.CraftWorld) world).getHandle(), touched);
++    }
++
++    /** one packet per touched section, only to the players actually tracking that chunk */
++    private static void send(ServerLevel level, Long2ObjectOpenHashMap<ShortSet> touched) {
+         for (var entry : touched.long2ObjectEntrySet()) {
+             SectionPos sectionPos = SectionPos.of(entry.getLongKey());
+             LevelChunk chunk = level.getChunk(sectionPos.x(), sectionPos.z());
