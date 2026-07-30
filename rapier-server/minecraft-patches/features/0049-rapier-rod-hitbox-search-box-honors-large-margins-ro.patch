@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 08:26:59 -0700
+Subject: [PATCH] rapier - rod hitbox search box honors large margins;
+ rod-air-scale knob for airborne rod knockback
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index 4c752eba215df898416e3ae9b9df45f05fd46681..688646aa8101fa295cdbfe61bfa5ff45d8866d1f 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -40,6 +40,7 @@ public final class RapierConfig {
+         DEFAULTS.put("rod-cast-speed", 1.5);           // bobber initial velocity (1.8: 1.5)
+         DEFAULTS.put("rod-gravity", 0.04);             // bobber gravity per tick out of water (1.8: 0.04)
+         DEFAULTS.put("rod-hitbox", 0.3);               // hit detection inflation around targets (1.8: 0.3; modern shrank it to 0 which drops legit rod hits)
++        DEFAULTS.put("rod-air-scale", 1.0);            // multiplier on rod knockback when the target is airborne (1.0 = authentic; lower to soften mid-jump rod shots)
+     }
+ 
+     private static final ConcurrentHashMap<String, Double> VALUES = new ConcurrentHashMap<>();
+@@ -135,6 +136,7 @@ public final class RapierConfig {
+     public static double rodCastSpeed()           { return get("rod-cast-speed"); }
+     public static double rodGravity()             { return get("rod-gravity"); }
+     public static double rodHitbox()              { return get("rod-hitbox"); }
++    public static double rodAirScale()            { return get("rod-air-scale"); }
+ 
+     private static void ensureLoaded() {
+         if (!loaded) load();
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index ba2d750d5bd67d0b2ea596e5070097eb13bcd3cd..4bcf1424e4db29247de7cfdea9abb0a4df57435d 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -308,15 +308,16 @@ public class FishingHook extends Projectile {
+                 rapierHitLiving.hurtTime = 10;
+                 rapierHitLiving.hurtDuration = 10;
+                 rapierHitLiving.hurtMarked = true;
+-                // rapier - 1.8 combat: the bobber hit knocks the target back. 1.8's attackEntityFrom(causeThrownDamage, 0.0F) rode the hurt path which always applied knockBack(0.4) away from the angler; our manual hit pipeline skipped it, leaving rod hits with animation+sound but no push. rod-knockback in /kb scales it.
++                // rapier - 1.8 combat: the bobber hit knocks the target back. 1.8's attackEntityFrom(causeThrownDamage, 0.0F) rode the hurt path which always applied knockBack(0.4) away from the angler; our manual hit pipeline skipped it, leaving rod hits with animation+sound but no push. rod-knockback in /kb scales it, rod-air-scale softens it for airborne targets.
++                double rapierRodAir = rapierHitLiving.onGround() ? 1.0 : net.minecraft.server.rapier.RapierConfig.rodAirScale();
+                 rapierHitLiving.knockback(
+-                    0.4F * net.minecraft.server.rapier.RapierConfig.rodKnockback(),
++                    0.4F * net.minecraft.server.rapier.RapierConfig.rodKnockback() * rapierRodAir,
+                     rapierOwner.getX() - rapierHitLiving.getX(),
+                     rapierOwner.getZ() - rapierHitLiving.getZ(),
+                     this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.ENTITY_ATTACK
+                 );
+                 // rapier - extra rod-only vertical kick on top of the base knockback (rod-vertical in /kb, default 0 = pure 1.8)
+-                double rapierRodVertical = net.minecraft.server.rapier.RapierConfig.rodVertical();
++                double rapierRodVertical = net.minecraft.server.rapier.RapierConfig.rodVertical() * rapierRodAir;
+                 if (rapierRodVertical != 0.0) {
+                     net.minecraft.world.phys.Vec3 rapierRodDelta = rapierHitLiving.getDeltaMovement();
+                     rapierHitLiving.setDeltaMovement(rapierRodDelta.x, rapierRodDelta.y + rapierRodVertical, rapierRodDelta.z);
+diff --git a/net/minecraft/world/entity/projectile/ProjectileUtil.java b/net/minecraft/world/entity/projectile/ProjectileUtil.java
+index 4661f3536cf2bb530e82022415e629210419ca6f..29c64606eb5f64109a236f04173fd6235c0cc23c 100644
+--- a/net/minecraft/world/entity/projectile/ProjectileUtil.java
++++ b/net/minecraft/world/entity/projectile/ProjectileUtil.java
+@@ -78,7 +78,7 @@ public final class ProjectileUtil {
+         }
+ 
+         HitResult entityHitResult = getEntityHitResult(
+-            level, source, pos, vec3, source.getBoundingBox().expandTowards(deltaMovement).inflate(1.0), filter, margin
++            level, source, pos, vec3, source.getBoundingBox().expandTowards(deltaMovement).inflate(Math.max(1.0, margin)), filter, margin // rapier - candidate search box honors margins > 1.0, else large /kb rod-hitbox values are silently capped
+         );
+         if (entityHitResult != null) {
+             hitResult = entityHitResult;
