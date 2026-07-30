@@ -1,0 +1,112 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 23:09:56 -0700
+Subject: [PATCH] rapier - 1.8 combat: blockhit renders with the eat pose
+ (CONSUMABLE component)
+
+modern clients removed the 1.8 sword blocking pose; BLOCKS_ATTACKS gets
+rendered with the shield brace, which holds the sword flat and looks
+wrong. the EAT use-animation is the closest client-side match to the
+classic raised blockhit.
+
+- swords carry CONSUMABLE (36000s, EAT animation, intentionally_empty
+  sound, no particles) purely to drive the client render pose
+- Item.use skips the consumable branch for blockhit swords so the
+  server keeps the BLOCKS_ATTACKS path (stop/start/forceHeldSlot fixes)
+- Item.finishUsingItem never consumes a blockhit sword
+- ItemStack encoder force-injects CONSUMABLE alongside BLOCKS_ATTACKS
+  into the network patch (prototype components never diff into asPatch)
+
+diff --git a/net/minecraft/world/item/Item.java b/net/minecraft/world/item/Item.java
+index 3371b91339ca5f2e4917b190f9e85d431d802ec4..3bc721a2414db0bf22c4bca03d4773ec6b97ba49 100644
+--- a/net/minecraft/world/item/Item.java
++++ b/net/minecraft/world/item/Item.java
+@@ -183,7 +183,8 @@ public class Item implements FeatureElement, ItemLike {
+     public InteractionResult use(Level level, Player player, InteractionHand hand) {
+         ItemStack itemInHand = player.getItemInHand(hand);
+         Consumable consumable = itemInHand.get(DataComponents.CONSUMABLE);
+-        if (consumable != null) {
++        // rapier - 1.8 combat: blockhit swords carry CONSUMABLE purely for the client-side eat pose; the server must keep running the BLOCKS_ATTACKS sword path below
++        if (consumable != null && !(itemInHand.is(net.minecraft.tags.ItemTags.SWORDS) && itemInHand.has(DataComponents.BLOCKS_ATTACKS))) {
+             return consumable.startConsuming(player, itemInHand, hand);
+         } else {
+             Equippable equippable = itemInHand.get(DataComponents.EQUIPPABLE);
+@@ -226,6 +227,8 @@ public class Item implements FeatureElement, ItemLike {
+ 
+     public ItemStack finishUsingItem(ItemStack stack, Level level, LivingEntity livingEntity) {
+         Consumable consumable = stack.get(DataComponents.CONSUMABLE);
++        // rapier - 1.8 combat: a blockhit sword must never actually get consumed (its CONSUMABLE exists only for the client pose)
++        if (consumable != null && stack.is(net.minecraft.tags.ItemTags.SWORDS) && stack.has(DataComponents.BLOCKS_ATTACKS)) return stack;
+         return consumable != null ? consumable.onConsume(level, livingEntity, stack) : stack;
+     }
+ 
+diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
+index 607954f71531fa01708be609c0f2a29d53866c8e..97894b0cbe2c352d7841353a6b248d9851f58fe5 100644
+--- a/net/minecraft/world/item/ItemStack.java
++++ b/net/minecraft/world/item/ItemStack.java
+@@ -211,17 +211,18 @@ public final class ItemStack implements DataComponentHolder {
+                     boolean prev = net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.get();
+                     try (final io.papermc.paper.util.SafeAutoClosable ignored = io.papermc.paper.util.sanitizer.ItemObfuscationSession.withContext(c -> c.itemStack(value))) { // pass the itemstack as context to the obfuscation session
+                         net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.set(true);
+-                    // rapier start - 1.8 combat: force BLOCKS_ATTACKS into network patch so vanilla clients render blocking pose on swords
++                    // rapier start - 1.8 combat: force BLOCKS_ATTACKS + CONSUMABLE into the network patch so vanilla
++                    // clients receive them on swords (server-side prototype components never show up in asPatch()).
++                    // BLOCKS_ATTACKS enables the client-side blocking state; CONSUMABLE makes it render the eat pose.
+                     net.minecraft.core.component.DataComponentPatch patch = value.components.asPatch();
+                     if (value.has(net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS) && value.is(net.minecraft.tags.ItemTags.SWORDS)) {
+-                        boolean alreadyInPatch = false;
++                        boolean blocksInPatch = false;
++                        boolean consumableInPatch = false;
+                         for (java.util.Map.Entry<net.minecraft.core.component.DataComponentType<?>, java.util.Optional<?>> e : patch.entrySet()) {
+-                            if (e.getKey() == net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS) {
+-                                alreadyInPatch = true;
+-                                break;
+-                            }
++                            if (e.getKey() == net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS) blocksInPatch = true;
++                            if (e.getKey() == net.minecraft.core.component.DataComponents.CONSUMABLE) consumableInPatch = true;
+                         }
+-                        if (!alreadyInPatch) {
++                        if (!blocksInPatch || (!consumableInPatch && value.has(net.minecraft.core.component.DataComponents.CONSUMABLE))) {
+                             net.minecraft.core.component.DataComponentPatch.Builder rapierBuilder = net.minecraft.core.component.DataComponentPatch.builder();
+                             for (java.util.Map.Entry<net.minecraft.core.component.DataComponentType<?>, java.util.Optional<?>> e : patch.entrySet()) {
+                                 if (e.getValue().isPresent()) {
+@@ -232,7 +233,12 @@ public final class ItemStack implements DataComponentHolder {
+                                     rapierBuilder.remove(e.getKey());
+                                 }
+                             }
+-                            rapierBuilder.set(net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS, value.get(net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS));
++                            if (!blocksInPatch) {
++                                rapierBuilder.set(net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS, value.get(net.minecraft.core.component.DataComponents.BLOCKS_ATTACKS));
++                            }
++                            if (!consumableInPatch && value.has(net.minecraft.core.component.DataComponents.CONSUMABLE)) {
++                                rapierBuilder.set(net.minecraft.core.component.DataComponents.CONSUMABLE, value.get(net.minecraft.core.component.DataComponents.CONSUMABLE));
++                            }
+                             patch = rapierBuilder.build();
+                         }
+                     }
+diff --git a/net/minecraft/world/item/ToolMaterial.java b/net/minecraft/world/item/ToolMaterial.java
+index 26755dce565cd0f3d09160ca664deda064d4c979..1e6cbbd7c60351317fe7a52a586022de09bd81eb 100644
+--- a/net/minecraft/world/item/ToolMaterial.java
++++ b/net/minecraft/world/item/ToolMaterial.java
+@@ -102,6 +102,21 @@ public record ToolMaterial(
+                     Optional.empty(),
+                     Optional.empty()
+                 )
++            )
++            // rapier - 1.8 combat: CONSUMABLE drives the client-side render pose. modern clients removed the 1.8 sword
++            // blocking pose and render BLOCKS_ATTACKS with the shield brace (sword held flat); the EAT use-animation is
++            // the closest match to the classic raised blockhit look. consume time is absurd so it never completes,
++            // sound is intentionally_empty and particles off so no eating audio/crumbs. server logic still uses the
++            // BLOCKS_ATTACKS path in Item.use (the consumable branch skips blockhit swords).
++            .component(
++                DataComponents.CONSUMABLE,
++                new net.minecraft.world.item.component.Consumable(
++                    36000.0F,
++                    net.minecraft.world.item.ItemUseAnimation.EAT,
++                    net.minecraft.core.registries.BuiltInRegistries.SOUND_EVENT.wrapAsHolder(net.minecraft.sounds.SoundEvents.EMPTY),
++                    false,
++                    List.of()
++                )
+             );
+             // rapier end
+     }
