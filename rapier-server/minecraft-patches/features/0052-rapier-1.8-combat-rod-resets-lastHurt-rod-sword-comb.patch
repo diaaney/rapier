@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 09:21:08 -0700
+Subject: [PATCH] rapier - 1.8 combat: rod resets lastHurt (rod+sword combo),
+ attacker-facing fallback for degenerate kb, anti-forward clamp after sprint
+ extra
+
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 4ff3e1438aab00c3bba859694e56b9b7190c11dd..2757a70f191bad8ecac28982589e3c6dbc39ef89 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2110,6 +2110,12 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             // this.needsSync = true; // CraftBukkit - Move down
+             Vec3 deltaMovement = this.getDeltaMovement();
+ 
++            // rapier - overlapping bodies (running through each other) leave the knockback direction degenerate; vanilla picks a RANDOM direction which can launch the victim along their own sprint heading ("the hit pushed me forward"). Push along the attacker's facing instead; random stays as the last-resort fallback when there is no attacker.
++            if (x * x + z * z < 1.0E-5F && attacker != null) {
++                float rapierYaw = attacker.getYRot() * (float) (Math.PI / 180.0);
++                x = Mth.sin(rapierYaw);
++                z = -Mth.cos(rapierYaw);
++            }
+             while (x * x + z * z < 1.0E-5F) {
+                 x = (this.random.nextDouble() - this.random.nextDouble()) * 0.01;
+                 z = (this.random.nextDouble() - this.random.nextDouble()) * 0.01;
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index ee0637d1c027f8929935163f6375fb152dfbc13c..6d78412a36f3fe8d0ab61e8687774dabc4b7e59f 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1220,6 +1220,19 @@ public abstract class Player extends Avatar implements ContainerUser {
+                 -Mth.sin(this.getYRot() * (float) (Math.PI / 180.0)) * rapierSprintH, net.minecraft.server.rapier.RapierConfig.sprintVertical() * rapierKbScale, Mth.cos(this.getYRot() * (float) (Math.PI / 180.0)) * rapierSprintH
+                 , this // Paper - Add EntityKnockbackByEntityEvent and EntityPushedByEntityAttackEvent
+             );
++            // rapier - anti-forward guarantee after the sprint extra too: the yaw-based push can point along the victim's own heading when the fighters pass through each other, so strip any resulting motion still aimed at the attacker
++            double rapierRelX = target.getX() - this.getX();
++            double rapierRelZ = target.getZ() - this.getZ();
++            double rapierRelLen = Math.sqrt(rapierRelX * rapierRelX + rapierRelZ * rapierRelZ);
++            if (rapierRelLen > 1.0E-3) {
++                double rapierUx = rapierRelX / rapierRelLen;
++                double rapierUz = rapierRelZ / rapierRelLen;
++                Vec3 rapierTv = target.getDeltaMovement();
++                double rapierAlong = rapierTv.x * rapierUx + rapierTv.z * rapierUz;
++                if (rapierAlong < 0.0) {
++                    target.setDeltaMovement(rapierTv.x - rapierAlong * rapierUx, rapierTv.y, rapierTv.z - rapierAlong * rapierUz);
++                }
++            }
+             target.hurtMarked = true;
+             // rapier end
+ 
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 6808f07d7bcf7284adf09a2356405beaee520769..6eb6ec7d77568dc8a36807af8cb02a99309a447d 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -305,6 +305,7 @@ public class FishingHook extends Projectile {
+                 // rapier - 1.8 hit cooldown: a contact inside the first half of the invuln window does not register (authentic attackEntityFrom gate, hurtResistantTime > maxHurtResistantTime/2), so rod spam can't machine-gun knockback
+                 && rapierHitLiving.invulnerableTime <= rapierHitLiving.invulnerableDuration / 2) {
+                 rapierHitLiving.invulnerableTime = rapierHitLiving.invulnerableDuration;
++                rapierHitLiving.lastHurt = 0.0F; // rapier - 1.8: the 0-damage thrown attack set lastDamage=0, so the follow-up sword hit inside the invuln window deals its FULL damage. without this the stale lastHurt swallows the rod+sword combo ("kb but no hit").
+                 rapierHitLiving.hurtTime = 10;
+                 rapierHitLiving.hurtDuration = 10;
+                 rapierHitLiving.hurtMarked = true;
