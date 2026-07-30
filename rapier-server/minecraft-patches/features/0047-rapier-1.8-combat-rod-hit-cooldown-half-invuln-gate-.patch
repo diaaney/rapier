@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 07:59:51 -0700
+Subject: [PATCH] rapier - 1.8 combat: rod hit cooldown (half-invuln gate),
+ creative immunity, hook stays with line at waist height
+
+
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 1324643226a513fcb3166ec240c3815fa811d8f1..c8687706970ea2f971415bc892cc314efbff3986 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -208,7 +208,7 @@ public class FishingHook extends Projectile {
+                         if (!this.hookedIn.isRemoved() && this.hookedIn.canInteractWithLevel() && this.hookedIn.level().dimension() == this.level().dimension()
+                             )
+                          {
+-                            this.setPos(this.hookedIn.getX(), this.hookedIn.getY(0.8), this.hookedIn.getZ());
++                            this.setPos(this.hookedIn.getX(), this.hookedIn.getY(0.3), this.hookedIn.getZ()); // rapier - hooked bobber rides at waist height instead of 0.8 (eye level), where its sprite filled the victim's first-person view
+                         } else {
+                             this.setHookedEntity(null);
+                             new io.papermc.paper.event.entity.FishHookStateChangeEvent((org.bukkit.entity.FishHook) getBukkitEntity(), org.bukkit.entity.FishHook.HookState.UNHOOKED).callEvent(); // Paper - Add FishHookStateChangeEvent. #UNHOOKED
+@@ -299,8 +299,11 @@ public class FishingHook extends Projectile {
+         if (!this.level().isClientSide()) {
+             Entity hit = result.getEntity();
+             Player rapierOwner = this.getPlayerOwner();
+-            if (rapierOwner != null && hit instanceof net.minecraft.world.entity.LivingEntity rapierHitLiving) {
+-                // rapier - 1.8 combat: every rod cast contact registers as a hit (hurt animation + refreshed invuln window), even if the target was still in invuln from a previous hit. 0 damage. uniform for mobs and players.
++            if (rapierOwner != null && hit instanceof net.minecraft.world.entity.LivingEntity rapierHitLiving
++                // rapier - creative/spectator players are immune to rod hits (1.8: capabilities.disableDamage rejected thrown damage)
++                && !(rapierHitLiving instanceof Player rapierHitPlayer && (rapierHitPlayer.getAbilities().invulnerable || rapierHitPlayer.isSpectator()))
++                // rapier - 1.8 hit cooldown: a contact inside the first half of the invuln window does not register (authentic attackEntityFrom gate, hurtResistantTime > maxHurtResistantTime/2), so rod spam can't machine-gun knockback
++                && rapierHitLiving.invulnerableTime <= rapierHitLiving.invulnerableDuration / 2) {
+                 rapierHitLiving.invulnerableTime = rapierHitLiving.invulnerableDuration;
+                 rapierHitLiving.hurtTime = 10;
+                 rapierHitLiving.hurtDuration = 10;
+@@ -329,9 +332,6 @@ public class FishingHook extends Projectile {
+                         (this.random.nextFloat() - this.random.nextFloat()) * 0.2F + 1.0F
+                     );
+                 }
+-                // rapier - the bobber breaks on living-entity contact instead of hooking on: hooked bobbers sit at eye height and their sprite fills the victim's first-person view, and a lingering hook invites accidental drags. one cast = one clean hit.
+-                this.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.HIT);
+-                return;
+             }
+             this.setHookedEntity(result.getEntity());
+         }
