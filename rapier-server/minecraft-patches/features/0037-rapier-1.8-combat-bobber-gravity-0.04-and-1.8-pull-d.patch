@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 21:37:34 -0700
+Subject: [PATCH] rapier - 1.8 combat: bobber gravity 0.04 and 1.8 pull
+ durability cost
+
+gravity: 1.8.9 EntityFishHook applied motionY += 0.04 * d11 per tick
+(d11 = -1 fully out of water). modern lightened gravity to 0.03,
+making casts fly a flatter, longer arc than 1.8 -- with the restored
+1.5 cast velocity the bobber was overshooting where a 1.8 player
+expects it to land. drag (0.92 airborne) already matches.
+
+durability: 1.8.9 handleHookRetraction charged 3 durability for
+pulling ANY hooked entity. 1.9+ raised living entities to 5 while
+keeping items at 3, nearly halving rod lifespan in rod PvP (13 pulls
+vs 21 on a fresh rod).
+
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index e70e17b33f1037ab69c647f5eb81a21341483875..41f8588ca8dfa8295593cb1264284d07a0793f6c 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -251,7 +251,7 @@ public class FishingHook extends Projectile {
+             }
+ 
+             if (!fluidState.is(FluidTags.WATER) && !this.onGround() && this.hookedIn == null) {
+-                this.setDeltaMovement(this.getDeltaMovement().add(0.0, -0.03, 0.0));
++                this.setDeltaMovement(this.getDeltaMovement().add(0.0, -0.04, 0.0)); // rapier - 1.8 combat: bobber gravity 0.04 (1.8.9 EntityFishHook applied motionY += 0.04 * d11 with d11 = -1 out of water; modern lightened it to 0.03 which makes casts fly flatter and overshoot the 1.8 arc)
+             }
+ 
+             this.move(MoverType.SELF, this.getDeltaMovement());
+@@ -531,7 +531,7 @@ public class FishingHook extends Projectile {
+                 this.pullEntity(this.hookedIn);
+                 CriteriaTriggers.FISHING_ROD_HOOKED.trigger((ServerPlayer)playerOwner, stack, this, Collections.emptyList());
+                 this.level().broadcastEntityEvent(this, EntityEvent.FISHING_ROD_REEL_IN);
+-                i = this.hookedIn instanceof ItemEntity ? 3 : 5;
++                i = 3; // rapier - 1.8 combat: pulling any hooked entity costs 3 durability (1.8.9 handleHookRetraction; 1.9+ raised living entities to 5, halving rod lifespan in rod PvP)
+                 } // Paper - re-check to see if there is a hooked entity
+             } else if (this.nibble > 0) {
+                 LootParams lootParams = new LootParams.Builder((ServerLevel)this.level())

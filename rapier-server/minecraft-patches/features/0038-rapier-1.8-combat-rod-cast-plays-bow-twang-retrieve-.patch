@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 21:37:34 -0700
+Subject: [PATCH] rapier - 1.8 combat: rod cast plays bow twang, retrieve is
+ silent
+
+1.8.9 ItemFishingRod played random.bow (bow.ogg) at 0.5F volume
+with pitch 0.4/(rand*0.4+0.8) on cast, and NOTHING on retraction.
+modern replaced the cast sound with entity.fishing_bobber.throw (a
+1.9+ swish) and added entity.fishing_bobber.retrieve on reel-in --
+a loud tell during rod PvP that did not exist in 1.8.
+
+ARROW_SHOOT is the same bow.ogg sound file on modern clients, and
+the modern cast already used the authentic volume/pitch formula, so
+only the sound event changes. retrieve sound removed entirely.
+
+diff --git a/net/minecraft/world/item/FishingRodItem.java b/net/minecraft/world/item/FishingRodItem.java
+index 70d8a1caa896665f3f88a637cab3e8ad7ea52b56..b90cd9f64b489d023b5082d5555e6d6af10501f0 100644
+--- a/net/minecraft/world/item/FishingRodItem.java
++++ b/net/minecraft/world/item/FishingRodItem.java
+@@ -27,16 +27,7 @@ public class FishingRodItem extends Item {
+                 itemInHand.hurtAndBreak(i, player, hand.asEquipmentSlot());
+             }
+ 
+-            level.playSound(
+-                null,
+-                player.getX(),
+-                player.getY(),
+-                player.getZ(),
+-                SoundEvents.FISHING_BOBBER_RETRIEVE,
+-                SoundSource.NEUTRAL,
+-                1.0F,
+-                0.4F / (level.getRandom().nextFloat() * 0.4F + 0.8F)
+-            );
++            // rapier - 1.8 combat: no retrieve sound. 1.8.9 ItemFishingRod played nothing on retraction; entity.fishing_bobber.retrieve is a 1.9+ addition and is a loud tell in rod PvP.
+             itemInHand.causeUseVibration(player, GameEvent.ITEM_INTERACT_FINISH);
+         } else {
+             // CraftBukkit - moved down
+@@ -52,12 +43,13 @@ public class FishingRodItem extends Item {
+                     player.fishing = null;
+                     return InteractionResult.PASS;
+                 }
++                // rapier - 1.8 combat: cast plays the bow twang. 1.8.9 played "random.bow" (bow.ogg) at 0.5F with this same pitch formula; ARROW_SHOOT is that exact sound file on modern clients, while entity.fishing_bobber.throw is a 1.9+ swish that never existed in 1.8.
+                 level.playSound(
+                     null,
+                     player.getX(),
+                     player.getY(),
+                     player.getZ(),
+-                    SoundEvents.FISHING_BOBBER_THROW,
++                    SoundEvents.ARROW_SHOOT,
+                     SoundSource.NEUTRAL,
+                     0.5F,
+                     0.4F / (level.getRandom().nextFloat() * 0.4F + 0.8F)
