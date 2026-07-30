@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Wed, 29 Jul 2026 21:28:49 -0700
+Subject: [PATCH] rapier - 1.8 combat: remove 1.9 attack sounds (crit, strong,
+ weak, knockback, nodamage)
+
+entity.player.attack.* whoosh sounds were added in 1.9 as combat
+feedback. in 1.8 the only combat audio was the target hurt sound.
+these are fully server-authoritative on 1.21 clients (Paper sends
+them to the attacker explicitly via sendSoundEffect), so removing
+the server sends silences them for everyone including the attacker.
+
+left as vanilla: PLAYER_ATTACK_SWEEP in doSweepAttack (unreachable,
+sweep is disabled) and the deflect NODAMAGE (post-1.8 content).
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 32d809d7fdf1d3a12f2ee9ba65b03d2728013c29..4db2fa629a3cd988ac5d9d01ecfee885d2d9a355 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1053,7 +1053,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+                     boolean flag = attackStrengthScale > 0.9F;
+                     boolean flag1;
+                     if (this.isSprinting() && flag) {
+-                        this.playServerSideSound(SoundEvents.PLAYER_ATTACK_KNOCKBACK);
++                        // rapier - 1.8 combat: no PLAYER_ATTACK_KNOCKBACK whoosh (1.9+ sound; 1.8 sprint hits were silent beyond the hurt sound)
+                         flag1 = true;
+                     } else {
+                         flag1 = false;
+@@ -1088,7 +1088,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+                         this.damageStatsAndHearts(target, f3);
+                         this.causeFoodExhaustion(0.3F, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.ATTACK); // rapier - 1.8 combat: attack exhaustion 0.3 (was 0.1 in 1.9+)
+                     } else {
+-                        this.playServerSideSound(SoundEvents.PLAYER_ATTACK_NODAMAGE);
++                        // rapier - 1.8 combat: no PLAYER_ATTACK_NODAMAGE sound (1.9+ sound; 1.8 misses were silent)
+                     }
+                 }
+ 
+@@ -1146,12 +1146,12 @@ public abstract class Player extends Avatar implements ContainerUser {
+ 
+     private void attackVisualEffects(Entity target, boolean isCritical, boolean isSweep, boolean isStrong, boolean isStab, float damageAmount) {
+         if (isCritical) {
+-            this.playServerSideSound(SoundEvents.PLAYER_ATTACK_CRIT);
++            // rapier - 1.8 combat: no PLAYER_ATTACK_CRIT sound (1.9+ sound; the crit(target) call stays for the Bukkit-visible hook, its particles are already removed)
+             this.crit(target);
+         }
+ 
+         if (!isCritical && !isSweep && !isStab) {
+-            this.playServerSideSound(isStrong ? SoundEvents.PLAYER_ATTACK_STRONG : SoundEvents.PLAYER_ATTACK_WEAK);
++            // rapier - 1.8 combat: no PLAYER_ATTACK_STRONG / PLAYER_ATTACK_WEAK whoosh (1.9+ sounds; in 1.8 the only combat audio was the target's hurt sound)
+         }
+ 
+         if (damageAmount > 0.0F) {
