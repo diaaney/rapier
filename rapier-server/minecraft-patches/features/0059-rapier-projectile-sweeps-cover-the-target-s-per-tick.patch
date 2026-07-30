@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 11:01:53 -0700
+Subject: [PATCH] rapier - projectile sweeps cover the target's per-tick travel
+ (fast movers no longer tunnel through bobbers)
+
+
+diff --git a/net/minecraft/world/entity/projectile/ProjectileUtil.java b/net/minecraft/world/entity/projectile/ProjectileUtil.java
+index 29c64606eb5f64109a236f04173fd6235c0cc23c..d6a44bd677f145c70e939f45812abc6f7e7dbfd1 100644
+--- a/net/minecraft/world/entity/projectile/ProjectileUtil.java
++++ b/net/minecraft/world/entity/projectile/ProjectileUtil.java
+@@ -162,7 +162,10 @@ public final class ProjectileUtil {
+         Entity entity = null;
+ 
+         for (Entity entity1 : level.getEntities(source, boundingBox, filter)) {
+-            AABB aabb = entity1.getBoundingBox().inflate(margin);
++            // rapier - sweep against the target's whole per-tick travel, not just its instantaneous box: a fast-moving player (kb, sprint) covers half a block between ticks and a bobber/arrow crossing that gap tunnels straight through ("atraviesa"). expandTowards the position they came FROM this tick closes the gap.
++            AABB aabb = entity1.getBoundingBox()
++                .expandTowards(entity1.xOld - entity1.getX(), entity1.yOld - entity1.getY(), entity1.zOld - entity1.getZ())
++                .inflate(margin);
+             Optional<Vec3> optional1 = aabb.clip(startVec, endVec);
+             if (optional1.isPresent()) {
+                 double d1 = startVec.distanceToSqr(optional1.get());
