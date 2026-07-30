@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 09:05:34 -0700
+Subject: [PATCH] rapier - 1.8 combat: anti-forward knockback clamp (melee +
+ rod); restore 1.8 crit and enchanted-hit particles
+
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 0557fe4fd8b3d6edd029bf0102de3d40ca72d42e..281c98b565b0a7edad3b11b84d82465b95645ff2 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -2278,12 +2278,14 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public void crit(Entity target) {
+-        // rapier - 1.8 combat: no crit star particles (modern visual feedback removed)
++        // rapier - 1.8 combat: crit star particles restored — they existed in 1.8.9 (EntityPlayer.onCriticalHit broadcast the same animate action 4) and with sprint crits allowed they are the classic combo feedback
++        this.level().getChunkSource().sendToTrackingPlayersAndSelf(this, new ClientboundAnimatePacket(target, ClientboundAnimatePacket.CRITICAL_HIT));
+     }
+ 
+     @Override
+     public void magicCrit(Entity target) {
+-        // rapier - 1.8 combat: no enchanted-hit magic crit particles
++        // rapier - 1.8 combat: enchanted-hit spark particles restored — 1.8.9 showed them on every hit with an enchant damage bonus (onEnchantmentCritical, animate action 5)
++        this.level().getChunkSource().sendToTrackingPlayersAndSelf(this, new ClientboundAnimatePacket(target, ClientboundAnimatePacket.MAGIC_CRITICAL_HIT));
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 0241e361193fb80a3d40b50579bb1a8aa4b57cb6..4ff3e1438aab00c3bba859694e56b9b7190c11dd 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2123,6 +2123,16 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 Math.min(net.minecraft.server.rapier.RapierConfig.knockbackVerticalLimit(), deltaMovement.y * rapierFriction + strength * net.minecraft.server.rapier.RapierConfig.knockbackVertical()), // rapier - 1.8 combat: unconditional upward kick, 1.8 always did motionY = min(0.4, motionY/2 + 0.4) regardless of onGround. vertical strength and cap are live-tunable via /kb.
+                 deltaMovement.z * rapierFriction - vec3.z
+             );
++            // rapier - a hit must never leave the victim with net motion TOWARD the knockback source: a fast-moving victim's surviving momentum (friction share) could out-run the push, making hits feel like they pull you forward. zero the toward-source horizontal component; perpendicular strafe momentum is untouched.
++            double rapierAwayLen = Math.sqrt(vec3.x * vec3.x + vec3.z * vec3.z);
++            if (rapierAwayLen > 1.0E-5) {
++                double rapierUx = -vec3.x / rapierAwayLen;
++                double rapierUz = -vec3.z / rapierAwayLen;
++                double rapierAlong = finalVelocity.x * rapierUx + finalVelocity.z * rapierUz;
++                if (rapierAlong < 0.0) {
++                    finalVelocity = new Vec3(finalVelocity.x - rapierAlong * rapierUx, finalVelocity.y, finalVelocity.z - rapierAlong * rapierUz);
++                }
++            }
+             Vec3 diff = finalVelocity.subtract(deltaMovement);
+             io.papermc.paper.event.entity.EntityKnockbackEvent event = CraftEventFactory.callEntityKnockbackEvent((org.bukkit.craftbukkit.entity.CraftLivingEntity) this.getBukkitEntity(), attacker, attacker, eventCause, strength, diff);
+             // Paper end - knockback events
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 9b3f8a0915719aefa3d9e6cc5ceed4957c1a9e64..6808f07d7bcf7284adf09a2356405beaee520769 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -323,10 +323,23 @@ public class FishingHook extends Projectile {
+                         .scale(rapierRodStrength * net.minecraft.server.rapier.RapierConfig.knockbackHorizontal());
+                     double rapierRodFriction = net.minecraft.server.rapier.RapierConfig.rodFriction();
+                     net.minecraft.world.phys.Vec3 rapierDm = rapierHitLiving.getDeltaMovement();
++                    double rapierNewX = rapierDm.x * rapierRodFriction - rapierPush.x;
++                    double rapierNewZ = rapierDm.z * rapierRodFriction - rapierPush.z;
++                    // rapier - same anti-forward guarantee as melee knockback: zero any surviving momentum still pointing at the angler
++                    double rapierPushLen = Math.sqrt(rapierPush.x * rapierPush.x + rapierPush.z * rapierPush.z);
++                    if (rapierPushLen > 1.0E-5) {
++                        double rapierUx = -rapierPush.x / rapierPushLen;
++                        double rapierUz = -rapierPush.z / rapierPushLen;
++                        double rapierAlong = rapierNewX * rapierUx + rapierNewZ * rapierUz;
++                        if (rapierAlong < 0.0) {
++                            rapierNewX -= rapierAlong * rapierUx;
++                            rapierNewZ -= rapierAlong * rapierUz;
++                        }
++                    }
+                     rapierHitLiving.setDeltaMovement(
+-                        rapierDm.x * rapierRodFriction - rapierPush.x,
++                        rapierNewX,
+                         Math.min(net.minecraft.server.rapier.RapierConfig.knockbackVerticalLimit(), rapierDm.y * rapierRodFriction + rapierRodStrength * net.minecraft.server.rapier.RapierConfig.knockbackVertical()),
+-                        rapierDm.z * rapierRodFriction - rapierPush.z
++                        rapierNewZ
+                     );
+                 }
+                 // rapier - extra rod-only vertical kick on top of the base knockback (rod-vertical in /kb, default 0 = pure 1.8)
