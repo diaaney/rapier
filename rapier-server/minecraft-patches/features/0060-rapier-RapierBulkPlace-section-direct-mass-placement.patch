@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 13:55:08 -0700
+Subject: [PATCH] rapier - RapierBulkPlace: section-direct mass placement with
+ batched client updates and one-shot relight
+
+
+diff --git a/net/minecraft/server/rapier/RapierBulkPlace.java b/net/minecraft/server/rapier/RapierBulkPlace.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..4b786bad6de8bd173dc6c69d616ef1eb120b7fea
+--- /dev/null
++++ b/net/minecraft/server/rapier/RapierBulkPlace.java
+@@ -0,0 +1,89 @@
++package net.minecraft.server.rapier;
++
++import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
++import it.unimi.dsi.fastutil.shorts.ShortOpenHashSet;
++import it.unimi.dsi.fastutil.shorts.ShortSet;
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.SectionPos;
++import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.server.level.ServerPlayer;
++import net.minecraft.server.level.ThreadedLevelLightEngine;
++import net.minecraft.world.level.ChunkPos;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.chunk.LevelChunk;
++import net.minecraft.world.level.chunk.LevelChunkSection;
++
++import java.util.HashSet;
++import java.util.Set;
++
++/**
++ * Rapier primitive for animated mass block placement (the duel stage builder).
++ * <p>
++ * {@link #place} writes straight into chunk sections — no physics, no
++ * neighbour updates, no per-block lighting — and notifies clients with one
++ * section-update packet per touched section. Callers run {@link #relight}
++ * once when their animation finishes to fix lighting in a single async pass.
++ * Block-entity states (signs, chests...) fall back to the normal setBlock path
++ * so their tile data initializes correctly.
++ * <p>
++ * Plugins call this reflectively (bukkit World + BlockData are API types).
++ */
++public final class RapierBulkPlace {
++
++    private RapierBulkPlace() {}
++
++    /**
++     * @param coords x,y,z triplets; {@code count} entries are read
++     * @param blocks parallel array of bukkit BlockData (one per entry)
++     */
++    public static void place(org.bukkit.World world, int[] coords, int count, org.bukkit.block.data.BlockData[] blocks) {
++        ServerLevel level = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
++        Long2ObjectOpenHashMap<ShortSet> touched = new Long2ObjectOpenHashMap<>();
++
++        for (int i = 0; i < count; i++) {
++            int x = coords[i * 3], y = coords[i * 3 + 1], z = coords[i * 3 + 2];
++            BlockState state = ((org.bukkit.craftbukkit.block.data.CraftBlockData) blocks[i]).getState();
++
++            if (state.hasBlockEntity()) {
++                // rare path: let vanilla wire up the block entity properly
++                level.setBlock(new BlockPos(x, y, z), state, 2);
++                continue;
++            }
++
++            LevelChunk chunk = level.getChunk(x >> 4, z >> 4);
++            int sectionIndex = chunk.getSectionIndex(y);
++            if (sectionIndex < 0 || sectionIndex >= chunk.getSectionsCount()) continue;
++            LevelChunkSection section = chunk.getSection(sectionIndex);
++            section.setBlockState(x & 15, y & 15, z & 15, state);
++            chunk.markUnsaved();
++
++            long sectionKey = SectionPos.asLong(x >> 4, y >> 4, z >> 4);
++            touched.computeIfAbsent(sectionKey, k -> new ShortOpenHashSet())
++                   .add(SectionPos.sectionRelativePos(new BlockPos(x, y, z)));
++        }
++
++        // one packet per touched section, only to the players actually tracking that chunk
++        for (var entry : touched.long2ObjectEntrySet()) {
++            SectionPos sectionPos = SectionPos.of(entry.getLongKey());
++            LevelChunk chunk = level.getChunk(sectionPos.x(), sectionPos.z());
++            int sectionIndex = level.getSectionIndexFromSectionY(sectionPos.y());
++            if (sectionIndex < 0 || sectionIndex >= chunk.getSectionsCount()) continue;
++            ClientboundSectionBlocksUpdatePacket packet = new ClientboundSectionBlocksUpdatePacket(
++                    sectionPos, entry.getValue(), chunk.getSection(sectionIndex));
++            for (ServerPlayer player : level.getChunkSource().chunkMap.getPlayers(new ChunkPos(sectionPos.x(), sectionPos.z()), false)) {
++                player.connection.send(packet);
++            }
++        }
++    }
++
++    /** async relight of a chunk rectangle (inclusive chunk coords) — call once per finished animation */
++    public static void relight(org.bukkit.World world, int minChunkX, int minChunkZ, int maxChunkX, int maxChunkZ) {
++        ServerLevel level = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
++        Set<ChunkPos> chunks = new HashSet<>();
++        for (int cx = minChunkX; cx <= maxChunkX; cx++)
++            for (int cz = minChunkZ; cz <= maxChunkZ; cz++)
++                chunks.add(new ChunkPos(cx, cz));
++        ((ThreadedLevelLightEngine) level.getChunkSource().getLightEngine()).starlight$serverRelightChunks(chunks, pos -> {}, done -> {});
++    }
++}
