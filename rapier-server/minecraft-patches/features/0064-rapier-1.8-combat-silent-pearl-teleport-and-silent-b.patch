@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 23:21:24 -0700
+Subject: [PATCH] rapier - 1.8 combat: silent pearl teleport and silent bucket
+ emptying (1.9+ sounds removed)
+
+
+diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+index 66df6c69a95c5ca6b07294fdb3b13eee6651d22d..60151d720fb05b180dbd5481f1f56024755d6631 100644
+--- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
++++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+@@ -197,7 +197,7 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+     }
+ 
+     private void playSound(Level level, Vec3 pos) {
+-        level.playSound(null, pos.x, pos.y, pos.z, SoundEvents.PLAYER_TELEPORT, SoundSource.PLAYERS);
++        // rapier - 1.8 combat: no pearl teleport sound (the ender "woosh" is 1.9+; 1.8 pearls landed silently — throw and hit sounds untouched)
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/item/BucketItem.java b/net/minecraft/world/item/BucketItem.java
+index 9d6485148393292006ed4453e0ed228b6197b239..b1a331ec53b33a8954d09e26550e648a282a77c7 100644
+--- a/net/minecraft/world/item/BucketItem.java
++++ b/net/minecraft/world/item/BucketItem.java
+@@ -184,8 +184,7 @@ public class BucketItem extends Item implements DispensibleContainerItem {
+     }
+ 
+     protected void playEmptySound(@Nullable LivingEntity entity, LevelAccessor level, BlockPos pos) {
+-        SoundEvent soundEvent = this.content.is(FluidTags.LAVA) ? SoundEvents.BUCKET_EMPTY_LAVA : SoundEvents.BUCKET_EMPTY;
+-        level.playSound(entity, pos, soundEvent, SoundSource.BLOCKS, 1.0F, 1.0F);
++        // rapier - 1.8 combat: emptying a bucket is SILENT (bucket empty/fill sounds are 1.9+; 1.8 water/lava placement made no sound)
+         level.gameEvent(entity, GameEvent.FLUID_PLACE, pos);
+     }
+ 
