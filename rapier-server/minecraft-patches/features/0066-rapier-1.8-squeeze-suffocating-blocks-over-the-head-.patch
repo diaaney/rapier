@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Fri, 31 Jul 2026 09:00:40 -0700
+Subject: [PATCH] rapier - 1.8 squeeze: suffocating blocks over the head do not
+ force a crouch (obitraps kill; trapdoor crawling still works)
+
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index b711267c9f3ea0b68473ee0de81cd90ba99d77ce..28093e9a7637d7118e212c5ba2f8612f8a65470c 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -389,10 +389,30 @@ public abstract class Player extends Avatar implements ContainerUser {
+                 pose = Pose.SWIMMING;
+             }
+ 
++            // rapier - 1.8 squeeze: a full suffocating block over the head does NOT
++            // shrink the player out of harm's way (1.8 had no crawl — obitraps must
++            // kill). Thin shapes (trapdoors, slabs...) still allow the vanilla squeeze.
++            if (pose != Pose.STANDING && desiredPose == Pose.STANDING
++                    && !this.isSpectator() && !this.isPassenger()
++                    && this.standingSpaceBlockedBySuffocatingBlock()) {
++                pose = Pose.STANDING;
++            }
++
+             this.setPose(pose);
+         }
+     }
+ 
++    // rapier - true when the STANDING bounding box intersects a block state that
++    // would suffocate (full opaque cube) — i.e. the reason standing "doesn't fit"
++    // is a solid block someone put over this player's head
++    private boolean standingSpaceBlockedBySuffocatingBlock() {
++        net.minecraft.world.phys.AABB box = this.getDimensions(Pose.STANDING).makeBoundingBox(this.position()).deflate(1.0E-7);
++        return net.minecraft.core.BlockPos.betweenClosedStream(box).anyMatch(pos -> {
++            net.minecraft.world.level.block.state.BlockState state = this.level().getBlockState(pos);
++            return state.isSuffocating(this.level(), pos);
++        });
++    }
++
+     private Pose getDesiredPose() {
+         if (this.isSleeping()) {
+             return Pose.SLEEPING;
