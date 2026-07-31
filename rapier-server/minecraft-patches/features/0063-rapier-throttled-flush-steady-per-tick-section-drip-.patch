@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 23:14:15 -0700
+Subject: [PATCH] rapier - throttled flush: steady per-tick section drip
+ instead of bursts
+
+
+diff --git a/net/minecraft/server/rapier/RapierBulkPlace.java b/net/minecraft/server/rapier/RapierBulkPlace.java
+index 79e75acef18620df7d15453d60bbadb6af0441ac..29655d10547deefbfbf688dddaa4ed6aeb278ec7 100644
+--- a/net/minecraft/server/rapier/RapierBulkPlace.java
++++ b/net/minecraft/server/rapier/RapierBulkPlace.java
+@@ -86,6 +86,26 @@ public final class RapierBulkPlace {
+         send(((org.bukkit.craftbukkit.CraftWorld) world).getHandle(), touched);
+     }
+ 
++    /**
++     * Announces at most {@code maxSections} pending sections and keeps the rest
++     * queued. Calling this every tick turns the client update stream into a
++     * steady drip instead of periodic bursts — bursts make clients hitch on
++     * chunk re-meshing during build animations.
++     */
++    public static void flush(org.bukkit.World world, int maxSections) {
++        Long2ObjectOpenHashMap<ShortSet> pending = PENDING.get(world.getUID());
++        if (pending == null || pending.isEmpty()) return;
++        Long2ObjectOpenHashMap<ShortSet> batch = new Long2ObjectOpenHashMap<>();
++        var it = pending.long2ObjectEntrySet().fastIterator();
++        while (it.hasNext() && batch.size() < maxSections) {
++            var entry = it.next();
++            batch.put(entry.getLongKey(), entry.getValue());
++            it.remove();
++        }
++        if (pending.isEmpty()) PENDING.remove(world.getUID());
++        send(((org.bukkit.craftbukkit.CraftWorld) world).getHandle(), batch);
++    }
++
+     /** one packet per touched section, only to the players actually tracking that chunk */
+     private static void send(ServerLevel level, Long2ObjectOpenHashMap<ShortSet> touched) {
+         for (var entry : touched.long2ObjectEntrySet()) {
