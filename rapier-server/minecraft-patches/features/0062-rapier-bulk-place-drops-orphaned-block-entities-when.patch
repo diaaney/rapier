@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 22:46:43 -0700
+Subject: [PATCH] rapier - bulk place drops orphaned block entities when
+ overwriting
+
+
+diff --git a/net/minecraft/server/rapier/RapierBulkPlace.java b/net/minecraft/server/rapier/RapierBulkPlace.java
+index 35f1dca5b97949ee15cf2647eca8fc7e81e5c947..79e75acef18620df7d15453d60bbadb6af0441ac 100644
+--- a/net/minecraft/server/rapier/RapierBulkPlace.java
++++ b/net/minecraft/server/rapier/RapierBulkPlace.java
+@@ -63,7 +63,12 @@ public final class RapierBulkPlace {
+             int sectionIndex = chunk.getSectionIndex(y);
+             if (sectionIndex < 0 || sectionIndex >= chunk.getSectionsCount()) continue;
+             LevelChunkSection section = chunk.getSection(sectionIndex);
+-            section.setBlockState(x & 15, y & 15, z & 15, state);
++            BlockState previous = section.setBlockState(x & 15, y & 15, z & 15, state);
++            // overwriting a block-entity block (banner, chest...) must drop its tile data,
++            // or the orphan gets saved with the chunk and errors on every load
++            if (previous.hasBlockEntity()) {
++                chunk.removeBlockEntity(new BlockPos(x, y, z));
++            }
+             chunk.markUnsaved();
+ 
+             long sectionKey = SectionPos.asLong(x >> 4, y >> 4, z >> 4);
