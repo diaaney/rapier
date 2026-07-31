@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Fri, 31 Jul 2026 10:41:22 -0700
+Subject: [PATCH] rapier - bulk place exposes the pending section count
+ (drain-until-empty animations)
+
+
+diff --git a/net/minecraft/server/rapier/RapierBulkPlace.java b/net/minecraft/server/rapier/RapierBulkPlace.java
+index 29655d10547deefbfbf688dddaa4ed6aeb278ec7..3ae8dfd8ffed57ee0b1eb5846ba9136781e8a316 100644
+--- a/net/minecraft/server/rapier/RapierBulkPlace.java
++++ b/net/minecraft/server/rapier/RapierBulkPlace.java
+@@ -79,6 +79,12 @@ public final class RapierBulkPlace {
+         if (notify) send(level, touched);
+     }
+ 
++    /** number of sections still queued for announcement in this world (main thread only) */
++    public static int pending(org.bukkit.World world) {
++        Long2ObjectOpenHashMap<ShortSet> pending = PENDING.get(world.getUID());
++        return pending == null ? 0 : pending.size();
++    }
++
+     /** announces everything accumulated by non-notifying {@link #place} calls */
+     public static void flush(org.bukkit.World world) {
+         Long2ObjectOpenHashMap<ShortSet> touched = PENDING.remove(world.getUID());
