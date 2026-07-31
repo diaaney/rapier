@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: diaaney <latte@diane.zip>
+Date: Thu, 30 Jul 2026 23:52:05 -0700
+Subject: [PATCH] rapier - tunable pearl cost: pearl-damage knob + optional
+ post-pearl regen refund (practice style)
+
+
+diff --git a/net/minecraft/server/rapier/RapierConfig.java b/net/minecraft/server/rapier/RapierConfig.java
+index f1572dde5a4d71de12932fd7e7378f88ab52578c..1ae9426be3c1ffd2a88b9c76be45e407abb17b82 100644
+--- a/net/minecraft/server/rapier/RapierConfig.java
++++ b/net/minecraft/server/rapier/RapierConfig.java
+@@ -45,6 +45,9 @@ public final class RapierConfig {
+         DEFAULTS.put("rod-air-scale", 1.0);            // multiplier on rod knockback when the target is airborne (1.0 = authentic; lower to soften mid-jump rod shots)
+         DEFAULTS.put("rod-friction", 0.3);             // victim momentum kept through a rod hit (1.8: 0.5). low default so back-to-back rod shots don't compound into a launch
+         DEFAULTS.put("rod-ignore-cooldown", 0.0);      // 1 = bobber contacts register even inside the invuln window (0 = authentic 1.8 gate, contacts in the first half are eaten)
++        DEFAULTS.put("pearl-damage", 5.0);             // raw teleport damage before armor/protection (1.8: 5.0 = 2.5 hearts pre-reduction)
++        DEFAULTS.put("pearl-regen-ticks", 0.0);        // regen duration granted right after the pearl damage lands (0 = authentic off; practice servers refund ~half a heart fast)
++        DEFAULTS.put("pearl-regen-amplifier", 1.0);    // regen level - 1 for the pearl refund (1 = Regen II, one heart-half per 25 ticks)
+         DEFAULTS.put("debug-kb", 0.0);                 // 1 = log every hit/knockback application to console (combat forensics; noisy, leave off)
+     }
+ 
+@@ -146,6 +149,9 @@ public final class RapierConfig {
+     public static double rodAirScale()            { return get("rod-air-scale"); }
+     public static double rodFriction()            { return get("rod-friction"); }
+     public static double rodIgnoreCooldown()      { return get("rod-ignore-cooldown"); }
++    public static double pearlDamage()            { return get("pearl-damage"); }
++    public static double pearlRegenTicks()        { return get("pearl-regen-ticks"); }
++    public static double pearlRegenAmplifier()    { return get("pearl-regen-amplifier"); }
+ 
+     public static boolean debugKb()               { return get("debug-kb") != 0.0; }
+ 
+diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+index 60151d720fb05b180dbd5481f1f56024755d6631..a352492b3bb0591459e7cb57e2291db5553c8b76 100644
+--- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
++++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+@@ -134,7 +134,12 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+                         if (serverPlayer1 != null) {
+                             serverPlayer1.resetFallDistance();
+                             serverPlayer1.resetCurrentImpulseContext();
+-                            serverPlayer1.hurtServer(serverPlayer.level(), this.damageSources().enderPearl().eventEntityDamager(this), 5.0F); // CraftBukkit // Paper - fix DamageSource API
++                            serverPlayer1.hurtServer(serverPlayer.level(), this.damageSources().enderPearl().eventEntityDamager(this), (float) net.minecraft.server.rapier.RapierConfig.pearlDamage()); // CraftBukkit // Paper - fix DamageSource API // rapier - tunable pearl cost
++                            // rapier - practice-style pearl refund: brief regen right after the cost lands
++                            int pearlRegenTicks = (int) net.minecraft.server.rapier.RapierConfig.pearlRegenTicks();
++                            if (pearlRegenTicks > 0 && !serverPlayer1.isDeadOrDying()) {
++                                serverPlayer1.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.REGENERATION, pearlRegenTicks, (int) net.minecraft.server.rapier.RapierConfig.pearlRegenAmplifier()), this);
++                            }
+                         }
+ 
+                         this.playSound(serverLevel, vec3);
